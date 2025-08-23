@@ -34,7 +34,7 @@ def hamming_distance(str1, str2):
         raise ValueError("Strings must have the same length")
     return sum(c1 != c2 for c1, c2 in zip(str1, str2))
 
-def sample_noisy_channel_parallel(test_input, times, max_workers=8):
+def sample_noisy_channel_parallel(test_input, times, max_workers=16):
     """Sample the noisy channel in parallel using ThreadPoolExecutor."""
     results = []
 
@@ -55,15 +55,15 @@ def sample_noisy_channel_parallel(test_input, times, max_workers=8):
 # --------------------------
 
 if __name__ == "__main__":
-    lengths = [2**i for i in range(9)]  # 1,2,4,...,256
+    lengths = [256, 512, 1048]
     times = 100
-    max_workers = 16  # adjust based on network capacity
+    max_workers = 16  # tune based on network capacity
     output_dir = "results"
     os.makedirs(output_dir, exist_ok=True)
 
     summary_records = []
-
     total_tasks = len(lengths) * 4  # 4 patterns per length
+
     with tqdm(total=total_tasks, desc="Overall progress") as outer_pbar:
         for length in lengths:
             patterns = {
@@ -81,7 +81,7 @@ if __name__ == "__main__":
                 mean_dist = df_samples['hamming_distance'].mean()
                 std_dist = df_samples['hamming_distance'].std()
 
-                # Save raw samples for this pattern
+                # Save raw samples
                 df_samples.to_csv(os.path.join(output_dir, f"{pattern_name}_length{length}_samples.csv"), index=False)
 
                 summary_records.append({

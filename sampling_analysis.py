@@ -9,6 +9,7 @@ The following code interfaces with the noisy channel, hosted on a Dartmouth webs
 """
 
 import subprocess
+import numpy as np
 
 def noisy_channel(bits: str) -> str:
     """
@@ -38,10 +39,6 @@ def noisy_channel(bits: str) -> str:
 
     return result.stdout.split("<body>")[1].split("</body>")[0]
 
-
-
-print(noisy_channel("000101010101010101010100010101010101010101010101010101010101010101010"))
-
 def hamming_distance(str1, str2) :
     dist = 0
 
@@ -53,17 +50,14 @@ def hamming_distance(str1, str2) :
                 dist += 1
     return(dist)
 
-def avg_dist(len, times) :
-    zeros = '0' * len
-    tot = 0
-    
-    for i in range(times) :
-        feedback = noisy_channel(zeros)
-        tot += hamming_distance(zeros, feedback)
-        # print(f"Input: {zeros}, Output: {feedback}")
+def avg_dist(length, times, bit_val) :
+    test_input = str(bit_val) * length
+    samples = [hamming_distance(test_input, noisy_channel(test_input)) for x in range(times)]
+    samples = np.array(samples)
 
-    return(tot/times)
+    return np.mean(samples), np.std(samples)
 
-n = 100
+n = 10
 t = 100
-print(f"Average bit flips of {n}-length string run {t} times: {avg_dist(n, t)}")
+print(f"Average bit flips of {n}-length zero string run {t} times: {avg_dist(n, t, 0)}")
+print(f"Average bit flips of {n}-length one string run {t} times: {avg_dist(n, t, 1)}")

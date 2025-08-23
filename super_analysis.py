@@ -30,68 +30,83 @@ def noisy_channel(bits: str) -> str:
     return result.stdout.split("<body>")[1].split("</body>")[0]
 
 def hamming_distance(str1, str2):
+    """Compute Hamming distance between two bit strings."""
     if len(str1) != len(str2):
         raise ValueError("Strings must have the same length")
     return sum(c1 != c2 for c1, c2 in zip(str1, str2))
 
-def sample_noisy_channel_parallel(test_input, times, max_workers=16):
-    """Sample the noisy channel in parallel using ThreadPoolExecutor."""
+def sample_noisy_channel_parallel(test_input, num_samples, max_workers=16):
+    """Sample the noisy channel in parallel."""
     results = []
 
     def single_sample(_):
         output = noisy_channel(test_input)
         dist = hamming_distance(test_input, output)
-        return {'input': test_input, 'output': output, 'hamming_distance': dist}
+        return output, dist
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(single_sample, i) for i in range(times)]
-        for f in tqdm(as_completed(futures), total=times, desc=f"Sampling length {len(test_input)}"):
-            results.append(f.result())
+        futures = [executor.submit(single_sample, i) for i in range(num_samples)]
+        for f in tqdm(as_completed(futures), total=num_samples, desc=f"Sampling len {len(test_input)}"):
+            output, dist = f.result()
+            results.append({'input': test_input, 'output': output, 'hamming_distance': dist})
 
     return pd.DataFrame(results)
+
+def compute_per_bit_errors(df):
+    """Compute per-bit error probabilities."""
+    bit_length = len(df['input'][0])
+    outputs = np.array([[int(b) for b in out] for out in df['output']])
+    inputs = np.array([[int(b) for b in inp] for inp in df['input']])
+    errors = outputs != inputs
+    per_bit_probs = errors.mean(axis=0)
+    return pd.DataFrame({'bit_position': np.arange(bit_length), 'error_probability': per_bit_probs})
 
 # --------------------------
 # Main workflow
 # --------------------------
 
 if __name__ == "__main__":
-    lengths = [256, 512, 1048]
-    times = 100
-    max_workers = 16  # tune based on network capacity
+    lengths = [128, 256, 512]
+    num_samples = 40
+    max_workers = 16
     output_dir = "results"
     os.makedirs(output_dir, exist_ok=True)
 
     summary_records = []
-    total_tasks = len(lengths) * 4  # 4 patterns per length
 
-    with tqdm(total=total_tasks, desc="Overall progress") as outer_pbar:
-        for length in lengths:
-            patterns = {
-                "all_0s": "0"*length,
-                "all_1s": "1"*length,
-                "alternating_0_start": "".join(['0' if i%2==0 else '1' for i in range(length)]),
-                "alternating_1_start": "".join(['1' if i%2==0 else '0' for i in range(length)])
-            }
+    for length in lengths:
+        patterns = {
+            "all_0s": "0"*length,
+            "all_1s": "1"*length,
+            "alternating_0_start": "".join(['0' if i%2==0 else '1' for i in range(length)]),
+            "alternating_1_start": "".join(['1' if i%2==0 else '0' for i in range(length)])
+        }
 
-            for pattern_name, test_input in patterns.items():
-                # Sample in parallel
-                df_samples = sample_noisy_channel_parallel(test_input, times, max_workers=max_workers)
+        for pattern_name, test_input in patterns.items():
+            print(f"Sampling: length={length}, pattern={pattern_name}")
+            df_samples = sample_noisy_channel_parallel(test_input, num_samples, max_workers=max_workers)
 
-                # Compute summary stats
-                mean_dist = df_samples['hamming_distance'].mean()
-                std_dist = df_samples['hamming_distance'].std()
+            # Compute summary stats
+            mean_hd = df_samples['hamming_distance'].mean()
+            std_hd = df_samples['hamming_distance'].std()
 
-                # Save raw samples
-                df_samples.to_csv(os.path.join(output_dir, f"{pattern_name}_length{length}_samples.csv"), index=False)
+            # Save raw samples
+            sample_file = os.path.join(output_dir, f"{pattern_name}_len{length}_samples.csv")
+            df_samples.to_csv(sample_file, index=False)
 
-                summary_records.append({
-                    'length': length,
-                    'pattern': pattern_name,
-                    'mean_hamming_distance': mean_dist,
-                    'std_hamming_distance': std_dist
-                })
+            # Compute per-bit errors
+            df_per_bit = compute_per_bit_errors(df_samples)
+            per_bit_file = os.path.join(output_dir, f"{pattern_name}_len{length}_perbit.csv")
+            df_per_bit.to_csv(per_bit_file, index=False)
 
-                outer_pbar.update(1)
+            # Record summary stats
+            summary_records.append({
+                'length': length,
+                'pattern': pattern_name,
+                'mean_hamming_distance': mean_hd,
+                'std_hamming_distance': std_hd,
+                'num_samples': num_samples
+            })
 
     # Save overall summary
     df_summary = pd.DataFrame(summary_records)

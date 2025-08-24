@@ -47,4 +47,8 @@ def noisy_channel(bits: str) -> str:
 """#Example Usage"""
 
 print(noisy_channel("000101010101010101010100010101010101010101010101010101010101010101010"))
+<<<<<<< HEAD:engs_27_final_project_starter.py
+=======
+
+>>>>>>> 5ea7dae (data from first meeting. not pushing chat gpt code for now.):Chat GPT/engs_27_final_project_starter.py
 

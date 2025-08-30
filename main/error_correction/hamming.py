@@ -23,7 +23,6 @@ def packetize(message, n = 11) :
 
     # stop packet which indicates how many bits were padded
     packets.append(format(pad_len, "011b"))
-    print(f"Padding {pad_len} 0s")
     return(packets)
 
 def EHC_16_11_encode(message) :
@@ -95,7 +94,6 @@ def EHC_16_11_decode(data_packets) :
             print("!!!!!!!!!!!!!!!")
             print("MULTI-BIT ERROR")
             print("!!!!!!!!!!!!!!!")
-            break
 
         decoded = []
         for i in range(16) :
@@ -123,7 +121,7 @@ def noisy_channel(data_packets) :
 
 def remove_padding(decoded_packets) :
     if len(decoded_packets) <= 1 :
-        raise ValueError("Missing stop packet")
+        print("Missing stop packet")
 
     stop_packet = decoded_packets[-1]
     pad_len = int(stop_packet, 2)
@@ -131,7 +129,6 @@ def remove_padding(decoded_packets) :
     penult_packet = decoded_packets[-2]
     if pad_len > 0 :
         penult_packet = penult_packet[:-pad_len]
-        print(f"removing {pad_len} 0s")
 
     data_packets = decoded_packets[:-2] + [penult_packet]
     return("".join(data_packets))

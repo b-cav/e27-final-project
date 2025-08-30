@@ -169,6 +169,28 @@ def decode_message(encoded_message, huff_tree):
     return decoded_message
 
 ##################################################################################
+# Init function for the top-level main
+##################################################################################
+
+def huffman_init(training_file) :
+    training_text = readfile(training_file)  # Training text for frequencies
+
+    # Make bigram huffman tree
+    K = 1000 # number of top bigrams to use
+    bigram_list = top_bigrams(training_text, K) # get the top K bigrams, sorted by frequency
+    freqs = Counter(replace_bigrams(training_text, bigram_list)) # count the frequencies of the new symbols
+
+    bigram_tree = build_huff_tree(freqs) # build the huffman tree
+    bigram_codebook = build_codebook(bigram_tree) # build the codebook
+
+    # Remap the tree to minimize internal transitions
+    # Note: this does not change the shape of the tree or the code lengths
+    opt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
+    opt_codebook = build_codebook(opt_tree) # build the optimized codebook
+
+    return(opt_codebook, bigram_list, opt_tree)
+
+##################################################################################
 # Main function for running the compression
 ##################################################################################
 

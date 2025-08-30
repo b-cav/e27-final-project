@@ -21,10 +21,18 @@ def noisy_channel(data_packets) :
     return(outputs)
 
 def console() :
+    # For comparison: unprotected, basic ASCII routine
     message = input("ENTER MESSAGE: ")
-
-    ascii_bin_string = "".join(format(ord(char), "08b") for char in message)
-    received = noisy_channel([ascii_bin_string])
-    ascii_received_string
-
+    sending = "".join(format(ord(char), "08b") for char in message)
+    #print(f"SENDING: {sending}")
+    received = noisy_channel([sending])
+    #print(f"RECEIVED: {received}")
+    ascii_received_packets = []
+    for packet in received :
+        ascii_received_packets.append("".join(chr(int(packet[i:i+8], 2)) for i in range(0, len(packet), 8)))
+    ascii_received_string = "".join(ascii_received_packets)
     print(f"RECEIVED MESSAGE: {ascii_received_string}")
+
+if __name__ == "__main__" :
+    while True :
+        console()

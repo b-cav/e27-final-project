@@ -49,5 +49,5 @@ async def mass_request(n_reqs: int) :
                 writer.writerow([result])
 
 if __name__ == "__main__" :
-    asyncio.run(mass_request(10000))
+    asyncio.run(mass_request(100000))
 

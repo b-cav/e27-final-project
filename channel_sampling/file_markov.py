@@ -26,9 +26,9 @@ def first_bit_flip(thou=100) :
     print(f"Pr[fbf | b0 = \"1\"] = {fbf[1]}")
 
 # Probability of a bit flipping at each position
-def pos_flips(code, thou=100) :
+def pos_flips(code, thou=1000) :
     n = len(code)
-    noisy_outputs = np.loadtxt(f"./results_{str(thou)}K/{str(code)}_results.csv", dtype=str)
+    noisy_outputs = np.loadtxt(f"./cont_results_{str(thou)}K/{str(code)}_results.csv", dtype=str)
     bitflips = np.zeros(n, dtype=int)
 
     for sample in noisy_outputs :
@@ -48,7 +48,7 @@ def save_pos_flips(codes) :
         row = [code] + [f"{prob:.4f}" for prob in probs]
         writer.writerow(row)
 
-def cond_flips(codes, prevs, dynamic = False, thou = 100) :
+def cond_flips(codes, prevs, dynamic = False, thou = 1000) :
     # 3-dim matrix where each entry (i,j, k)
     # --> indexes to codeword i, bit value j = 0/1, prev k
     # --> contains the probability of a bit flip in that situation
@@ -59,7 +59,7 @@ def cond_flips(codes, prevs, dynamic = False, thou = 100) :
     for i in range(len(codes)) :
         code = codes[i]
         n = len(code)
-        noisy_outputs = np.loadtxt(f"./results_{str(thou)}K/{str(code)}_results.csv", dtype=str)
+        noisy_outputs = np.loadtxt(f"./cont_results_{str(thou)}K/{str(code)}_results.csv", dtype=str)
 
         for sample in noisy_outputs :
             sample = str(sample.strip())
@@ -90,9 +90,9 @@ def cond_flips(codes, prevs, dynamic = False, thou = 100) :
 def print_cond_probs(codes, prevs, dynamic):
     probs = cond_flips(codes, prevs, dynamic)
     if dynamic == True :
-        ofile = open("./prob_results/dynamic_cond_probs.csv", "w", newline="")
+        ofile = open("./prob_results/1M_dynamic_cond_probs.csv", "w", newline="")
     else :
-        ofile = open("./prob_results/static_cond_probs.csv", "w", newline="")
+        ofile = open("./prob_results/1M_static_cond_probs.csv", "w", newline="")
     for i in range(len(codes)) :
         code = codes[i]
         ofile.write(f"Codeword: {code}\n")
@@ -109,7 +109,8 @@ def print_cond_probs(codes, prevs, dynamic):
             ofile.write(f" {bit}  | " + " | ".join(row) + "\n\n")
 
 if __name__ == "__main__" :
-    codes = ["0", "1", "00", "01", "10", "11", "000", "001", "010", "011", "100", "101", "110", "111"]
+    #codes = ["000", "001", "010", "011", "100", "101", "110", "111"]
+    codes = ["0"*100, "1"*100, "01"*50, "10"*50]
     prevs = ["0", "1", "00", "01", "10", "11"]
 
     save_pos_flips(codes)

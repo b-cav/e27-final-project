@@ -1,7 +1,7 @@
 """
 file_markov.py
 
-ENGS 27 Final Project Mass HTTP Sampling
+ENGS 27 Final Project Conditional Probability Calculations
 Group - Ben Sheppard, Joshua Johnson, Ben Cavanagh
 
 Estimate Markov bit flip probabilities/model given I/O data

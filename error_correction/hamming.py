@@ -14,14 +14,16 @@ def packetize(message, n = 11) :
         raise ValueError(f"not bin string")
     message = str(message).strip()
     remainder = len(message)%n
+    pad_len = 0
     if  remainder != 0 :
-        padding = "0"*(n-remainder)
-    else :
-        padding = ""
+        pad_len = n-remainder
+        message += "0"*(pad_len)
 
-    message = message + padding
     packets = [message[i*n:i*n+n] for i in range(len(message)//n)]
 
+    # stop packet which indicates how many bits were padded
+    packets.append(format(pad_len, "011b"))
+    print(f"Padding {pad_len} 0s")
     return(packets)
 
 def EHC_16_11_encode(message) :
@@ -60,7 +62,7 @@ def EHC_16_11_encode(message) :
 
 def EHC_16_11_decode(data_packets) :
     p_bits = [0, 1, 2, 4, 8]
-    decoded_packets = []
+    decoded_bits = []
     for packet in data_packets :
         # break up cause python strings immut
         expanded = []
@@ -98,9 +100,13 @@ def EHC_16_11_decode(data_packets) :
             if i not in p_bits :
                 decoded.append(str(expanded[i]))
 
-        decoded_packets.extend(decoded)
+        decoded_bits.extend(decoded)
 
-    return("".join(decoded_packets))
+    # Put back into 11 bit packets for padding removal
+    decoded_packets = []
+    for i in range(0, len(decoded_bits), 11) :
+        decoded_packets.append("".join(decoded_bits[i:i+11]))
+    return(decoded_packets)
 
 def noisy_channel(data_packets) :
     url = "https://engs27.host.dartmouth.edu/cgi-bin/noisychannel.py"
@@ -113,8 +119,23 @@ def noisy_channel(data_packets) :
 
     return(outputs)
 
+def remove_padding(decoded_packets) :
+    if len(decoded_packets) <= 1 :
+        raise ValueError("Missing stop packet")
+
+    stop_packet = decoded_packets[-1]
+    pad_len = int(stop_packet, 2)
+
+    penult_packet = decoded_packets[-2]
+    if pad_len > 0 :
+        penult_packet = penult_packet[:-pad_len]
+        print(f"removing {pad_len} 0s")
+
+    data_packets = decoded_packets[:-2] + [penult_packet]
+    return("".join(data_packets))
+
 if __name__ == "__main__" :
-    test_messages = ["0"*22, "1"*22, "01"*11, "10"*11]
+    test_messages = ["0"*22, "1"*22, "01"*11, "10"*11, "0"*30, "1"*30, "01"*20, "10"*20]
 
     for message in test_messages :
         print(f"Testing input: {message}")
@@ -123,5 +144,7 @@ if __name__ == "__main__" :
         rec = noisy_channel(enc)
         print(f"Received: {rec}")
         dec = EHC_16_11_decode(rec)
-        print(f"Decoded: {dec}")
+        print(f"Decoded: {"".join(dec)}")
+        clean = remove_padding(dec)
+        print(f"Cleaned: {clean}")
 

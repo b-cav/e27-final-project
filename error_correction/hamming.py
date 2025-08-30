@@ -1,10 +1,10 @@
 """
 hamming.py
 
-ENGS 27 Final Project Simple Error Correction
+ENGS 27 Final Project Hamming Error Correction
 Group - Ben Sheppard, Joshua Johnson, Ben Cavanagh
 
-(8,4) and (16,11) extended hamming codes
+(16,11) extended hamming codes
 """
 
 import requests
@@ -92,7 +92,9 @@ def EHC_16_11_decode(data_packets) :
             # Ext bit matches b/c no error
             pass
         else :
-            print("Multi-bit error")
+            print("!!!!!!!!!!!!!!!")
+            print("MULTI-BIT ERROR")
+            print("!!!!!!!!!!!!!!!")
             break
 
         decoded = []

@@ -5,10 +5,8 @@ ENGS 27 Final Project Noisy Channel Communication Console
 Group - Ben Sheppard, Joshua Johnson, Ben Cavanagh
 
 """
-import requests
 from huffman import final_compression as fc
 from error_correction import hamming as hm
-
 
 def console(opt_codebook, bigram_list, opt_tree) :
     message = input("ENTER MESSAGE: ")

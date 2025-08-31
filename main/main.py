@@ -8,10 +8,41 @@ Group - Ben Sheppard, Joshua Johnson, Ben Cavanagh
 from huffman import final_compression as fc
 from error_correction import hamming as hm
 from error_correction import raid
-
+import os
 
 def console(opt_codebook, bigram_list, opt_tree) :
-    message = input("ENTER MESSAGE: ")
+    message = input("ENTER MESSAGE OR FILE OR EXIT: ")
+
+    # ***********************************************
+    # Handle special inputs
+    # ***********************************************
+    if message.strip() == "EXIT" :
+        exit()
+    elif message.strip() == "FILE":
+        dir = "./test_files"
+        files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
+        if not files:
+            print("No files found in test directory.")
+            message = " "
+        else:
+            print("Available files:")
+            for idx, fname in enumerate(files):
+                print(f"  {idx}: {fname}")
+            try:
+                choice = int(input("Select file number: ").strip())
+                if 0 <= choice < len(files):
+                    with open(os.path.join(dir, files[choice]), "r", encoding="utf-8") as f:
+                        message = f.read()
+                else:
+                    print("Invalid choice, using empty message.")
+                    message = " "
+            except Exception as e:
+                print(f"Invalid input: {e}")
+                message = " "
+    elif message.strip() == "" :
+        message == " "
+    else :
+        message = message.strip()
 
     # ************************************************
     # For comparison: unprotected, basic ASCII routine
@@ -51,7 +82,7 @@ def console(opt_codebook, bigram_list, opt_tree) :
 
     # ------------------------------------------------
     # 6) Recover multi-bit packets, remove RAID P packets
-    raid_recovered = raid.RAID_remove(received_packets)
+    raid_recovered, lost_stripes, stripe_count = raid.RAID_remove(received_packets)
 
     # ------------------------------------------------
     # 7) Clean Hamming parity bits
@@ -65,7 +96,11 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # 9) Decode:
     decoded = fc.decode_message(unpadded, opt_tree)
     print(f"PROTECTED MESSAGE: {decoded}")
-   
+    print(f"---------------------------")
+    print(f"DAMAGED STRIPE COUNT: {lost_stripes}")
+    print(f"STRIPES DAMAGED: {100*(lost_stripes/stripe_count):.3f}%")
+    print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
+    print(f"---------------------------\n")
  
 if __name__ == "__main__" :
     print("BUILDING TREE...")

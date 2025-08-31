@@ -25,25 +25,25 @@ def RAID_protect(data_packets, n = 16, s = 4) :
                 p_bit ^= int(packet[j])
             P += str(p_bit)
 
-        print(f"Parity packet: {P}")
         out_packets.append(P)
 
         i += len(stripe)
 
-    print(f"Detected {i} data packets")
     return out_packets
 
 # Given a stream of Hamming-corrected data/P packets
 # Recover lost packets and clean out P packets
 def RAID_remove(data_packets, n = 16, s = 4) :
     out_packets = []
+    stripe_count = 0
+    lost_stripes = 0
 
     i = 0
     while i < len(data_packets) :
         mult_err_loc = -1
         unrecoverable = 0
         stripe = data_packets[i:i+s+1]
-        print(f"STRIPE I'm removing: {stripe}")
+        stripe_count += 1
         # Check for multi-bit errors
         # Make sure only one has happened in the stripe
         for j in range(len(stripe)) :
@@ -59,13 +59,16 @@ def RAID_remove(data_packets, n = 16, s = 4) :
             out_packets.extend(RAID_recover(stripe, mult_err_loc))
         else :
             out_packets.extend(stripe[:-1])
+            """
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             print("UNRECOVERABLE MULTI-BIT ERROR")
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            """
+            lost_stripes += 1
 
         i += (len(stripe))
 
-    return(out_packets)
+    return(out_packets, lost_stripes, stripe_count)
 
 # Given a stripe of s data packets and 1 parity packet
 # and corrupted packet index i recover packet at index i
@@ -120,12 +123,14 @@ def multi_err_detect(packet, n = 16) :
     if ext_par != int(expanded[0]) :
         # 1 error, fix it
         expanded[error_loc] = str(int(expanded[error_loc])^1)
-    elif error_loc == 0 :
+    elif error_loc == 0 : # hence ext_par == int(expanded[0])
         # No errors, pass through
         pass
     else :
+        """
         print("MULTI-BIT ERROR")
         print("ATTEMPTING TO RECOVER...")
+        """
         multi_err = True
 
     return("".join(expanded), multi_err)

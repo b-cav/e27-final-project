@@ -109,6 +109,21 @@ def EHC_16_11_decode(data_packets, count) :
         decoded_packets.append("".join(decoded_bits[i:i+11]))
     return decoded_packets, count
 
+# Just remove parity bits
+def EHC_16_11_clean(data_packets, n = 16) :
+    p_bits = [0, 1, 2, 4, 8]
+
+    out_packets = []
+
+    for packet in data_packets :
+        decoded = []
+        for i in range(n) :
+            if i not in p_bits :
+                decoded.append(packet[i])
+        out_packets.append("".join(decoded))
+
+    return(out_packets)
+
 def noisy_channel(data_packets, unprotected) :
     url = "https://engs27.host.dartmouth.edu/cgi-bin/noisychannel.py"
     outputs = []

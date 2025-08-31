@@ -59,7 +59,7 @@ def EHC_16_11_encode(message) :
 
     return(coded_packets)
 
-def EHC_16_11_decode(data_packets) :
+def EHC_16_11_decode(data_packets, count) :
     p_bits = [0, 1, 2, 4, 8]
     decoded_bits = []
     for packet in data_packets :
@@ -94,6 +94,7 @@ def EHC_16_11_decode(data_packets) :
             print("!!!!!!!!!!!!!!!")
             print("MULTI-BIT ERROR")
             print("!!!!!!!!!!!!!!!")
+            count = count + 1
 
         decoded = []
         for i in range(16) :
@@ -106,7 +107,7 @@ def EHC_16_11_decode(data_packets) :
     decoded_packets = []
     for i in range(0, len(decoded_bits), 11) :
         decoded_packets.append("".join(decoded_bits[i:i+11]))
-    return(decoded_packets)
+    return decoded_packets, count
 
 def noisy_channel(data_packets, unprotected) :
     url = "https://engs27.host.dartmouth.edu/cgi-bin/noisychannel.py"

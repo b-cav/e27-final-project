@@ -8,6 +8,7 @@ Group - Ben Sheppard, Joshua Johnson, Ben Cavanagh
 from huffman import final_compression as fc
 from error_correction import hamming as hm
 
+
 def console(opt_codebook, bigram_list, opt_tree) :
     message = input("ENTER MESSAGE: ")
 
@@ -16,7 +17,7 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # ************************************************
     sending = "".join(format(ord(char), "08b") for char in message)
     #print(f"SENDING: {sending}")
-    received = hm.noisy_channel([sending])
+    received = hm.noisy_channel([sending], 1)
     #print(f"RECEIVED: {received}")
     ascii_received_packets = []
     for packet in received :
@@ -37,10 +38,9 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # ------------------------------------------------
     # 3) Packetize, Add Parity Bits:
     protected = hm.EHC_16_11_encode(compressed) # Splits data into 11 bit packets, pads last one
-
     # ------------------------------------------------
     # 4) Transmit Packets:
-    received_packets = hm.noisy_channel(protected)
+    received_packets = hm.noisy_channel(protected, 0)
 
     # ------------------------------------------------
     # 5) Error Correct Received Packets:

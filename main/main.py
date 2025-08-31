@@ -15,8 +15,6 @@ def console(opt_codebook, bigram_list, opt_tree) :
 
     if message == "EXIT" :
         exit()
-    elif message == "FILE" :
-        pass
 
     # ************************************************
     # For comparison: unprotected, basic ASCII routine

@@ -108,16 +108,19 @@ def EHC_16_11_decode(data_packets) :
         decoded_packets.append("".join(decoded_bits[i:i+11]))
     return(decoded_packets)
 
-def noisy_channel(data_packets) :
+def noisy_channel(data_packets, unprotected) :
     url = "https://engs27.host.dartmouth.edu/cgi-bin/noisychannel.py"
     outputs = []
-
-    for packet in data_packets :
-        rec_data = requests.post(url, data={"bits":packet})
-        rec_data = rec_data.text.strip()
-        outputs.append(rec_data.split("<body>")[1].split("</body>")[0])
-
-    return(outputs)
+    num_packets = len(data_packets)
+    data_stream = "".join(data_packets)
+    rec_stream = requests.post(url, data={"bits":data_stream})
+    rec_stream = rec_stream.text.strip()
+    rec_stream = rec_stream.split("<body>")[1].split("</body>")[0]
+    if unprotected:
+        rec_packet = [rec_stream[i:i+8] for i in range(0, len(data_stream), 8)]
+    else:
+        rec_packet = [rec_stream[i:i+16] for i in range(0, len(data_stream), 16)]    
+    return(rec_packet)
 
 def remove_padding(decoded_packets) :
     if len(decoded_packets) <= 1 :
@@ -140,7 +143,7 @@ if __name__ == "__main__" :
         print(f"Testing input: {message}")
         enc = EHC_16_11_encode(message)
         print(f"Sending:  {enc}")
-        rec = noisy_channel(enc)
+        rec = noisy_channel(enc, 0)
         print(f"Received: {rec}")
         dec = EHC_16_11_decode(rec)
         print(f"Decoded: {"".join(dec)}")

@@ -11,7 +11,12 @@ from error_correction import raid
 
 
 def console(opt_codebook, bigram_list, opt_tree) :
-    message = input("ENTER MESSAGE: ")
+    message = input("ENTER MESSAGE OR EXIT: ")
+
+    if message == "EXIT" :
+        exit()
+    elif message == "FILE" :
+        pass
 
     # ************************************************
     # For comparison: unprotected, basic ASCII routine
@@ -48,10 +53,9 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # 5) Transmit packets:
     received_packets = hm.noisy_channel(protected, 0)
 
-
     # ------------------------------------------------
     # 6) Recover multi-bit packets, remove RAID P packets
-    raid_recovered = raid.RAID_remove(received_packets)
+    raid_recovered, lost, count = raid.RAID_remove(received_packets)
 
     # ------------------------------------------------
     # 7) Clean Hamming parity bits
@@ -65,8 +69,7 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # 9) Decode:
     decoded = fc.decode_message(unpadded, opt_tree)
     print(f"PROTECTED MESSAGE: {decoded}")
-   
- 
+
 if __name__ == "__main__" :
     print("BUILDING TREE...")
     codebook, bigrams, tree = fc.huffman_init("./huffman/WarAndPeace.txt")

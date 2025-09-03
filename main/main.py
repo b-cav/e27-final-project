@@ -12,14 +12,15 @@ import os
 
 def console(opt_codebook, bigram_list, opt_tree, info_mode) :
     message = input("ENTER <MESSAGE> OR CHOOSE FILE, INFO, EXIT: ")
+    message = message.strip()
 
     # ***********************************************
     # Handle special inputs
     # ***********************************************
-    if message.strip() == "EXIT" :
+    if message.upper() == "EXIT" :
         exit()
     
-    elif message.strip() == "FILE":
+    elif message.upper() == "FILE":
         dir = "./test_files"
         files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
         if not files:
@@ -40,12 +41,10 @@ def console(opt_codebook, bigram_list, opt_tree, info_mode) :
             except Exception as e:
                 print(f"Invalid input: {e}")
                 message = " "
-    elif message.strip() == "" :
+    elif message == "" :
         message = "EMPTY"
-    else :
-        message = message.strip()
 
-    if message.strip() == "INFO" :
+    if message.upper() == "INFO" :
         if info_mode == 0 :
             print(f"INFO MODE ACTIVATED")
         else :
@@ -95,7 +94,7 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
 
     # ------------------------------------------------
     # 6) Recover multi-bit packets, remove RAID P packets
-    raid_recovered, lost_stripes, damaged_stripes, stripe_count = raid.RAID_remove(received_packets)
+    raid_recovered, lost_stripes, damaged_stripes, stripe_count = raid.RAID_remove(received_packets, info_flag)
 
     # ------------------------------------------------
     # 7) Clean Hamming parity bits
@@ -111,6 +110,7 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
     print(f"PROTECTED MESSAGE : {decoded}")
 
     if info_flag :
+        print(f"---------------------------")
         print(f"SENT MESSAGE      : {message}")
         print(f"HUFFMAN COMPRESSED: {compressed}")
         print(f"HAMMING ENDCODED  : {encoded}")
@@ -120,11 +120,12 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
         print(f"PARITY REMOVED    : {cleaned}")
         print(f"UNPADDED          : {unpadded}")
         print(f"DECOMPRESSED      : {decoded}")
-        print(f"---------------------------")
-        print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
-        print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
-        print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
-        print(f"---------------------------\n")
+
+    print(f"---------------------------")
+    print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
+    print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
+    print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
+    print(f"---------------------------\n")
 
 
 if __name__ == "__main__" :

@@ -33,7 +33,7 @@ def RAID_protect(data_packets, n = 16, s = 4) :
 
 # Given a stream of Hamming-corrected data/P packets
 # Recover lost packets and clean out P packets
-def RAID_remove(data_packets, n = 16, s = 4) :
+def RAID_remove(data_packets, verbose = False, n = 16, s = 4) :
     out_packets = []
     stripe_count = 0
     damaged_stripes = 0
@@ -48,7 +48,7 @@ def RAID_remove(data_packets, n = 16, s = 4) :
         # Check for multi-bit errors
         # Make sure only one has happened in the stripe
         for j in range(len(stripe)) :
-            repaired_16_bit, mult_err = multi_err_detect(stripe[j])
+            repaired_16_bit, mult_err = multi_err_detect(stripe[j], verbose)
             if mult_err :
                 damaged_stripes += 1
                 if mult_err_loc == -1 :
@@ -62,12 +62,10 @@ def RAID_remove(data_packets, n = 16, s = 4) :
             out_packets.extend(RAID_recover(stripe, mult_err_loc))
         else :
             out_packets.extend(stripe[:-1])
-            
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print("UNRECOVERABLE MULTI-BIT ERROR")
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            
-            
+            if verbose :
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                print("UNRECOVERABLE MULTI-BIT ERROR")
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         i += (len(stripe))
 
@@ -95,7 +93,7 @@ def RAID_recover(stripe, i, n = 16, s = 4) :
 
 # Detect multi-bit errors, correct single bit errors, but don't shorten
 # Somewhat redundant but wanted black-box link to Hamming decoding
-def multi_err_detect(packet, n = 16) :
+def multi_err_detect(packet, verbose = False, n = 16) :
     multi_err = False
     p_bits = [0, 1, 2, 4, 8]
 
@@ -130,11 +128,11 @@ def multi_err_detect(packet, n = 16) :
         # No errors, pass through
         pass
     else :
-        
-        print("MULTI-BIT ERROR")
-        print("ATTEMPTING TO RECOVER...")
-        
         multi_err = True
+        if verbose :
+            print("MULTI-BIT ERROR")
+            print("ATTEMPTING TO RECOVER...")
+
     return("".join(expanded), multi_err)
 
 if __name__ == "__main__" :

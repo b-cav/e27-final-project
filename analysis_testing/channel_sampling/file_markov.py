@@ -107,12 +107,14 @@ def print_cond_probs(codes, prevs, dynamic):
                 else :
                     row.append(f"{val:0.3f}")
             ofile.write(f" {bit}  | " + " | ".join(row) + "\n\n")
+            print(f"Done with {prevs[j]} for {codes[i]}")
+        print(f"Done with {codes[i]}")
 
 if __name__ == "__main__" :
-    #codes = ["000", "001", "010", "011", "100", "101", "110", "111"]
-    codes = ["0"*100, "1"*100, "01"*50, "10"*50]
+    codes = ["000", "001", "010", "011", "100", "101", "110", "111"]
+    codes += ["0"*100, "1"*100, "01"*50, "10"*50]
     prevs = ["0", "1", "00", "01", "10", "11"]
 
-    save_pos_flips(codes)
-    print_cond_probs(codes, prevs, False)
+    #save_pos_flips(codes)
+    #print_cond_probs(codes, prevs, False)
     print_cond_probs(codes, prevs, True)

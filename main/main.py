@@ -19,7 +19,7 @@ def console(codebook, alt_codebook, bigram_list, tree, alt_tree, info_mode) :
     # ***********************************************
     if message.upper() == "EXIT" :
         exit()
-    
+
     elif message.upper() == "FILE":
         dir = "./test_files"
         files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
@@ -75,7 +75,7 @@ def send_message(message, opt_codebook, alt_codebook, bigram_list, opt_tree, alt
     # ************************************************
 
     # ------------------------------------------------
-# 2) Encode message:
+    # 2) Encode message:
     message_with_bigrams = fc.replace_bigrams(message, bigram_list)
     compressed = fc.compress_message(message_with_bigrams, opt_codebook, alt_codebook)
     # pass in a list of symbols to encode with bigram codebook

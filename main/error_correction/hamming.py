@@ -161,7 +161,7 @@ if __name__ == "__main__" :
         print(f"Sending:  {enc}")
         rec = noisy_channel(enc, 0)
         print(f"Received: {rec}")
-        dec = EHC_16_11_decode(rec)
+        dec = EHC_16_11_decode(rec, 0)
         print(f"Decoded: {"".join(dec)}")
         clean = remove_padding(dec)
         print(f"Cleaned: {clean}")

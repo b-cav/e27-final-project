@@ -126,7 +126,7 @@ def send_message(message, opt_codebook, alt_codebook, bigram_list, opt_tree, alt
     print(f"---------------------------")
     print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
     print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
-    print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
+    print("Lost stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
     print(f"---------------------------\n")
 
 

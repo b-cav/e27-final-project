@@ -169,46 +169,59 @@ def diverse_remap_tree(root, codebook):
     return new_root # returns the most diverse tree
 
 
+
 ##############################################################################
-# Encoding and decoding functions
+# Encoding and decoding functions (with robust header)
 ##############################################################################
 
+# Repeat the selector bit k times and decode by majority vote.
+# Use an odd k to avoid ties; k=5 is a good default ( )
+HEADER_REP = 5
+
+def _encode_header(flag, k=HEADER_REP):
+    # flag: 0 selects baseline, 1 selects alternative
+    return ("1" if flag else "0") * k
+
+def _decode_header(bits, k=HEADER_REP):
+    # majority vote over the k header bits
+    ones = bits.count("1")
+    return 1 if ones > k // 2 else 0
+
 # encodes a message given a particular codebook. Also has an altcodes which is an alternative codebook. It selects which codebook
-# results in fewer internal flips and uses that one, prepending a 0 if it used the normal one and a 1 if it used the alternative one.
+# results in fewer internal flips and uses that one, prepending a repeated header (0^k for baseline, 1^k for alternative).
 # returns the encoded message as a string of bits
 def compress_message(message, codes, alt_codes=None):
     for ch in message:
         if ch not in codes:
             print(f"Warning: No code for character '{ch}'")
     encoded_message = "".join(codes[ch] for ch in message)
-
     if alt_codes is None:
         return encoded_message
 
-    # If any symbol missing in alt_codes, fall back to original
-    alt_missing = any(ch not in alt_codes for ch in message)
-    if alt_missing:
-        return "0" + encoded_message
+    # If any symbol missing in alt_codes, fall back to original (with baseline header)
+    if any(ch not in alt_codes for ch in message):
+        return _encode_header(0) + encoded_message
 
     alt_encoded = "".join(alt_codes[ch] for ch in message)
 
-    # Include header bit in transition count
-    flips_orig = internal_flips("0" + encoded_message)
-    flips_alt = internal_flips("1" + alt_encoded)
+    # Include header in the transition count so selection accounts for the header/payload boundary
+    h0 = _encode_header(0)
+    h1 = _encode_header(1)
+    flips_orig = internal_flips(h0 + encoded_message)
+    flips_alt = internal_flips(h1 + alt_encoded)
 
     if flips_alt < flips_orig:
-        return "1" + alt_encoded
+        return h1 + alt_encoded
     else:
-        return "0" + encoded_message
+        return h0 + encoded_message
 
-
-# decodes a message. Note, requires the huff_tree for decoding
+# decodes a message. If alt_huff_tree is provided, expects a k-bit repeated header to select which tree to use
 # returns the decoded message as a string of characters
 def decompress_message(encoded_message, huff_tree, alt_huff_tree=None):
-    if alt_huff_tree is not None and encoded_message:
-        flag = encoded_message[0]
-        bits = encoded_message[1:]
-        tree = huff_tree if flag == "0" else alt_huff_tree
+    if alt_huff_tree is not None and len(encoded_message) >= HEADER_REP:
+        flag = _decode_header(encoded_message[:HEADER_REP])
+        bits = encoded_message[HEADER_REP:]
+        tree = huff_tree if flag == 0 else alt_huff_tree
     else:
         bits = encoded_message
         tree = huff_tree

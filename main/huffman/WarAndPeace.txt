@@ -1,5 +1,7 @@
 Character string append to ensure complete coverage:
 abcdefghijklmnopqrstuvwkyzABCDEFGHIJKLMNOP1234567890-=!@#$%^&*()_+`~[]\{}|;':",./<>?
+‘ ’ “ ” – — … • ± © ® € £ ¥ ¢ « » † ‡ ¶ § ‰
+á é í ó ú à è ì ò ù â ê î ô û ä ë ï ö ü ã õ ñ ç ÿ ß æ œ
 
 The Project Gutenberg EBook of War and Peace, by Leo Tolstoy
 

@@ -10,14 +10,15 @@ from error_correction import hamming as hm
 from error_correction import raid
 import os
 
-def console(opt_codebook, bigram_list, opt_tree) :
-    message = input("ENTER MESSAGE OR FILE OR EXIT: ")
+def console(opt_codebook, bigram_list, opt_tree, info_mode) :
+    message = input("ENTER <MESSAGE> OR CHOOSE FILE, INFO, EXIT: ")
 
     # ***********************************************
     # Handle special inputs
     # ***********************************************
     if message.strip() == "EXIT" :
         exit()
+    
     elif message.strip() == "FILE":
         dir = "./test_files"
         files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
@@ -44,6 +45,18 @@ def console(opt_codebook, bigram_list, opt_tree) :
     else :
         message = message.strip()
 
+    if message.strip() == "INFO" :
+        if info_mode == 0 :
+            print(f"INFO MODE ACTIVATED")
+        else :
+            print(f"INFO MODE DEACTIVATED")
+        info_mode ^= 1
+    else :
+        send_message(message, codebook, bigrams, tree, info_mode)
+
+    return(info_mode)
+
+def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
     # ************************************************
     # For comparison: unprotected, basic ASCII routine
     # ************************************************
@@ -95,25 +108,28 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # ------------------------------------------------
     # 9) Decode:
     decoded = fc.decode_message(unpadded, opt_tree)
-
-    print(f"SENT MESSAGE      : {message}")
-    print(f"HUFFMAN COMPRESSED: {compressed}")
-    print(f"HAMMING ENDCODED  : {encoded}")
-    print(f"RAID PROTECTED    : {protected}")
-    print(f"RECEIVED BITS     : {received_packets}")
-    print(f"DECODED           : {raid_recovered}")
-    print(f"PARITY REMOVED    : {cleaned}")
-    print(f"UNPADDED          : {unpadded}")
-    print(f"DECOMPRESSED      : {decoded}")
     print(f"PROTECTED MESSAGE : {decoded}")
-    print(f"---------------------------")
-    print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
-    print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
-    print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
-    print(f"---------------------------\n")
- 
+
+    if info_flag :
+        print(f"SENT MESSAGE      : {message}")
+        print(f"HUFFMAN COMPRESSED: {compressed}")
+        print(f"HAMMING ENDCODED  : {encoded}")
+        print(f"RAID PROTECTED    : {protected}")
+        print(f"RECEIVED BITS     : {received_packets}")
+        print(f"DECODED           : {raid_recovered}")
+        print(f"PARITY REMOVED    : {cleaned}")
+        print(f"UNPADDED          : {unpadded}")
+        print(f"DECOMPRESSED      : {decoded}")
+        print(f"---------------------------")
+        print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
+        print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
+        print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
+        print(f"---------------------------\n")
+
+
 if __name__ == "__main__" :
     print("BUILDING TREE...")
     codebook, bigrams, tree = fc.huffman_init("./huffman/WarAndPeace.txt")
+    info_mode = 0
     while True :
-        console(codebook, bigrams, tree)
+        info_mode = console(codebook, bigrams, tree, info_mode)

@@ -1,10 +1,10 @@
-# async_comp_analysis.py - 
+# async_comp_analysis.py - Comparative analysis of compression/FEC schemes
 #
 # Ben Cavanagh
 # 09-03-2025
-# Description: 
+# Description: Various metrics plotted with each layer of Huffman/Hamming/RAID added
 #
-# analysis/experiment/channel_analysis.py
+
 import argparse
 import asyncio
 import csv
@@ -20,8 +20,8 @@ import numpy as np
 import aiohttp
 
 # Paths
-THIS_FILE = Path(__file__).resolve()  # .../analysis/experiment/channel_analysis.py
-PROJECT_ROOT = THIS_FILE.parents[2]   # project/
+THIS_FILE = Path(__file__).resolve()
+PROJECT_ROOT = THIS_FILE.parents[2]
 MAIN_DIR = PROJECT_ROOT / "main"
 
 # Ensure imports
@@ -101,23 +101,28 @@ def means_text(means: Dict[str, float], precision: int = 4) -> str:
             parts.append(f"{s}={means[s]:.{precision}g}")
     return " | ".join(parts)
 
-# --------------- channel ---------------
+# --------------- channel (HTTP only) ---------------
+_LEN_WARNED = False  # warn at most once per run on length mismatch
+
 async def http_channel(bits: str, session: aiohttp.ClientSession, url: str, sem: asyncio.Semaphore) -> str:
+    expected_len = len(bits)
     async with sem:
         async with session.post(url, data={"bits": bits}) as resp:
             text = await resp.text()
             lower = text.lower()
             i, j = lower.find("<body>"), lower.find("</body>")
-            if i != -1 and j != -1 and i + 6 <= j:
-                return text[i+6:j].strip()
-            return text.strip()
-
-def local_channel(bits: str, mode_arg: int) -> str:
-    try:
-        out = hm.noisy_channel(bits, mode_arg)  # str->str
-    except TypeError:
-        out = hm.noisy_channel([bits], mode_arg)  # list
-    return "".join(out) if isinstance(out, list) else out
+            payload = text[i+6:j].strip() if (i != -1 and j != -1 and i + 6 <= j) else text.strip()
+            # Enforce exact length
+            if len(payload) != expected_len:
+                global _LEN_WARNED
+                if not _LEN_WARNED:
+                    print(f"[WARN] HTTP channel returned {len(payload)} bits, expected {expected_len}. Adjusting to match (pad/truncate).")
+                    _LEN_WARNED = True
+                if len(payload) < expected_len:
+                    payload = payload + "0" * (expected_len - len(payload))
+                else:
+                    payload = payload[:expected_len]
+            return payload
 
 # --------------- scheme encode/decode ---------------
 def build_bits_and_sent(message: str,
@@ -184,18 +189,15 @@ def plot_overlaid_histogram(metric_by_scheme: Dict[str, List[float]],
     plt.figure(figsize=(8, 5))
     ax = plt.gca()
 
-    # Histograms
     for s in SCHEMES:
         vals = metric_by_scheme[s]
         if not vals:
             continue
         ax.hist(vals, bins=bins, range=value_range, alpha=0.35, label=s, color=COLORS[s], density=density)
 
-    # Set x-limits to the chosen range for fine-grained scaling
     if value_range is not None:
         ax.set_xlim(value_range)
 
-    # Means as small text and vertical lines
     if show_means:
         means = {s: (float(np.mean(metric_by_scheme[s])) if metric_by_scheme[s] else float("nan")) for s in SCHEMES}
         for s in SCHEMES:
@@ -256,13 +258,16 @@ def plot_binary_histogram(metric_by_scheme: Dict[str, List[float]],
 async def run_mass_test_async(trials: int,
                               msg_lens: List[int],
                               seed: int,
-                              ascii_channel_arg: int,
-                              fec_channel_arg: int,
                               save_dir: Path,
-                              channel_url: Optional[str],
+                              channel_url: str,
                               http_concurrency: int,
                               process_workers: int,
+                              msg_concurrency: int,
                               update_every: int):
+    if not channel_url:
+        print("[WARN] No HTTP channel URL provided (--channel_url). Exiting.")
+        return
+
     rng = random.Random(seed)
     codebook, alt_codebook, bigrams, tree, alt_tree = fc.huffman_init(str(MAIN_DIR / "huffman" / "WarAndPeace.txt"))
 
@@ -276,202 +281,185 @@ async def run_mass_test_async(trials: int,
     sent_bits_results: Dict[str, Dict[int, List[int]]] = {s: {L: [] for L in msg_lens} for s in SCHEMES}
     completed_counts: Dict[int, int] = {L: 0 for L in msg_lens}
 
-    sem = asyncio.Semaphore(http_concurrency) if channel_url else None
-    session_ctx = aiohttp.ClientSession() if channel_url else None
+    sem = asyncio.Semaphore(http_concurrency)
     plot_lock = asyncio.Lock()
     executor = ProcessPoolExecutor(max_workers=process_workers) if process_workers > 0 else None
 
-    def agg(values_by_len: Dict[int, List[float]]) -> Tuple[List[int], List[float], List[float]]:
-        lens = sorted(values_by_len.keys())
-        means, cis = [], []
-        for L in lens:
-            m, ci = mean_ci(values_by_len[L]); means.append(m); cis.append(ci)
-        return lens, means, cis
+    async with aiohttp.ClientSession() as session_ctx:
 
-    def agg_int(values_by_len: Dict[int, List[int]]) -> Tuple[List[int], List[float], List[float]]:
-        lens = sorted(values_by_len.keys())
-        means, cis = [], []
-        for L in lens:
-            vals = list(map(float, values_by_len[L])); m, ci = mean_ci(vals); means.append(m); cis.append(ci)
-        return lens, means, cis
+        def agg(values_by_len: Dict[int, List[float]]) -> Tuple[List[int], List[float], List[float]]:
+            lens = sorted(values_by_len.keys())
+            means, cis = [], []
+            for L in lens:
+                m, ci = mean_ci(values_by_len[L]); means.append(m); cis.append(ci)
+            return lens, means, cis
 
-    def write_summary_csv():
-        save_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = save_dir / "summary_results.csv"
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "scheme", "msg_len_chars",
-                "avg_ber", "ci_ber",
-                "avg_edit_distance", "ci_edit_distance",
-                "avg_norm_edit_distance", "ci_norm_edit_distance",
-                "percent_perfect", "ci_percent_perfect",
-                "avg_sent_bits", "ci_sent_bits"
-            ])
-            for s in SCHEMES:
-                Ls, ber_mean, ber_ci = agg(ber_results[s])
-                _, ed_mean, ed_ci = agg(ed_results[s])
-                _, n_ed_mean, n_ed_ci = agg(norm_ed_results[s])
-                _, perf_mean, perf_ci = agg(perfect_results[s])
-                _, sb_mean, sb_ci = agg_int(sent_bits_results[s])
-                for i, L in enumerate(Ls):
-                    writer.writerow([
-                        s, L,
-                        ber_mean[i], ber_ci[i],
-                        ed_mean[i], ed_ci[i],
-                        n_ed_mean[i], n_ed_ci[i],
-                        perf_mean[i], perf_ci[i],
-                        sb_mean[i], sb_ci[i]
-                    ])
+        def agg_int(values_by_len: Dict[int, List[int]]) -> Tuple[List[int], List[float], List[float]]:
+            lens = sorted(values_by_len.keys())
+            means, cis = [], []
+            for L in lens:
+                vals = list(map(float, values_by_len[L])); m, ci = mean_ci(vals); means.append(m); cis.append(ci)
+            return lens, means, cis
 
-    # sync plotting with captured state, include mean lines and fine-grained ranges
-    def sync_update_plots_for_length(L: int):
-        save_dir.mkdir(parents=True, exist_ok=True)
-        # BER
-        ber_L = {s: ber_results[s][L] for s in SCHEMES}
-        rng_ber = clamp_range_01(combined_range(ber_L, pad=0.05))
-        plot_overlaid_histogram(
-            ber_L,
-            title=f"BER Distribution (L={L} Chars)",
-            xlabel="Bit Error Rate",
-            fname=save_dir / f"hist_ber_L{L}.png",
-            bins=80,
-            value_range=rng_ber,
-            show_means=True,
-        )
-        # Edit distance
-        ed_L = {s: ed_results[s][L] for s in SCHEMES}
-        rng_ed = combined_range(ed_L, pad=0.05)
-        plot_overlaid_histogram(
-            ed_L,
-            title=f"Edit Distance Distribution (L={L} Chars)",
-            xlabel="Edit Distance (Characters)",
-            fname=save_dir / f"hist_edit_distance_L{L}.png",
-            bins=60,
-            value_range=rng_ed,
-            show_means=True,
-        )
-        # Normalized edit distance [0..1]
-        n_ed_L = {s: norm_ed_results[s][L] for s in SCHEMES}
-        rng_ned = clamp_range_01(combined_range(n_ed_L, pad=0.05))
-        plot_overlaid_histogram(
-            n_ed_L,
-            title=f"Normalized Edit Distance Distribution (L={L} Chars)",
-            xlabel="Normalized Edit Distance",
-            fname=save_dir / f"hist_norm_edit_distance_L{L}.png",
-            bins=80,
-            value_range=rng_ned,
-            show_means=True,
-        )
-        # Perfect vs imperfect
-        perf_L = {s: perfect_results[s][L] for s in SCHEMES}
-        plot_binary_histogram(
-            perf_L,
-            title=f"Perfect Message Indicator (L={L} Chars)",
-            xlabel="Outcome",
-            fname=save_dir / f"hist_perfect_L{L}.png",
-            show_means=True,
-        )
-        # Sent bits
-        sb_L = {s: list(map(float, sent_bits_results[s][L])) for s in SCHEMES}
-        rng_sb = combined_range(sb_L, pad=0.05)
-        plot_overlaid_histogram(
-            sb_L,
-            title=f"Sent Bits Distribution (L={L} Chars)",
-            xlabel="Bits Sent Over Channel",
-            fname=save_dir / f"hist_sent_bits_L{L}.png",
-            bins=40,
-            value_range=rng_sb,
-            show_means=True,
-        )
+        def write_summary_csv():
+            save_dir.mkdir(parents=True, exist_ok=True)
+            csv_path = save_dir / "summary_results.csv"
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "scheme", "msg_len_chars",
+                    "avg_ber", "ci_ber",
+                    "avg_edit_distance", "ci_edit_distance",
+                    "avg_norm_edit_distance", "ci_norm_edit_distance",
+                    "percent_perfect", "ci_percent_perfect",
+                    "avg_sent_bits", "ci_sent_bits"
+                ])
+                for s in SCHEMES:
+                    Ls, ber_mean, ber_ci = agg(ber_results[s])
+                    _, ed_mean, ed_ci = agg(ed_results[s])
+                    _, n_ed_mean, n_ed_ci = agg(norm_ed_results[s])
+                    _, perf_mean, perf_ci = agg(perfect_results[s])
+                    _, sb_mean, sb_ci = agg_int(sent_bits_results[s])
+                    for i, L in enumerate(Ls):
+                        writer.writerow([
+                            s, L,
+                            ber_mean[i], ber_ci[i],
+                            ed_mean[i], ed_ci[i],
+                            n_ed_mean[i], n_ed_ci[i],
+                            perf_mean[i], perf_ci[i],
+                            sb_mean[i], sb_ci[i]
+                        ])
 
-    async def update_plots_and_csv_for_length(L: int):
-        async with plot_lock:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, sync_update_plots_for_length, L)
-            await loop.run_in_executor(None, write_summary_csv)
+        def sync_update_plots_for_length(L: int):
+            save_dir.mkdir(parents=True, exist_ok=True)
+            # BER
+            ber_L = {s: ber_results[s][L] for s in SCHEMES}
+            rng_ber = clamp_range_01(combined_range(ber_L, pad=0.05))
+            plot_overlaid_histogram(
+                ber_L,
+                title=f"BER Distribution (L={L} Chars)",
+                xlabel="Bit Error Rate",
+                fname=save_dir / f"hist_ber_L{L}.png",
+                bins=80,
+                value_range=rng_ber,
+                show_means=True,
+            )
+            # Edit distance
+            ed_L = {s: ed_results[s][L] for s in SCHEMES}
+            rng_ed = combined_range(ed_L, pad=0.05)
+            plot_overlaid_histogram(
+                ed_L,
+                title=f"Edit Distance Distribution (L={L} Chars)",
+                xlabel="Edit Distance (Characters)",
+                fname=save_dir / f"hist_edit_distance_L{L}.png",
+                bins=60,
+                value_range=rng_ed,
+                show_means=True,
+            )
+            # Normalized edit distance
+            n_ed_L = {s: norm_ed_results[s][L] for s in SCHEMES}
+            rng_ned = clamp_range_01(combined_range(n_ed_L, pad=0.05))
+            plot_overlaid_histogram(
+                n_ed_L,
+                title=f"Normalized Edit Distance Distribution (L={L} Chars)",
+                xlabel="Normalized Edit Distance",
+                fname=save_dir / f"hist_norm_edit_distance_L{L}.png",
+                bins=80,
+                value_range=rng_ned,
+                show_means=True,
+            )
+            # Perfect vs imperfect
+            perf_L = {s: perfect_results[s][L] for s in SCHEMES}
+            plot_binary_histogram(
+                perf_L,
+                title=f"Perfect Message Indicator (L={L} Chars)",
+                xlabel="Outcome",
+                fname=save_dir / f"hist_perfect_L{L}.png",
+                show_means=True,
+            )
+            # Sent bits
+            sb_L = {s: list(map(float, sent_bits_results[s][L])) for s in SCHEMES}
+            rng_sb = combined_range(sb_L, pad=0.05)
+            plot_overlaid_histogram(
+                sb_L,
+                title=f"Sent Bits Distribution (L={L} Chars)",
+                xlabel="Bits Sent Over Channel",
+                fname=save_dir / f"hist_sent_bits_L{L}.png",
+                bins=40,
+                value_range=rng_sb,
+                show_means=True,
+            )
 
-    async def process_one_message(msg: str, L: int):
-        bits_map = build_bits_and_sent(msg, codebook, alt_codebook, bigrams, tree, alt_tree)
-
-        # channel per scheme
-        tasks = {}
-        for scheme, (bits, _, _) in bits_map.items():
-            if channel_url:
-                tasks[scheme] = asyncio.create_task(http_channel(bits, session_ctx, channel_url, sem))
-            else:
-                mode_arg = ascii_channel_arg if scheme in ("raw_ascii", "huffman_only") else fec_channel_arg
+        async def update_plots_and_csv_for_length(L: int):
+            async with plot_lock:
                 loop = asyncio.get_running_loop()
-                tasks[scheme] = loop.run_in_executor(None, local_channel, bits, mode_arg)
+                await loop.run_in_executor(None, sync_update_plots_for_length, L)
+                await loop.run_in_executor(None, write_summary_csv)
 
-        received: Dict[str, str] = {scheme: await t for scheme, t in tasks.items()}
+        async def process_one_message(msg: str, L: int):
+            bits_map = build_bits_and_sent(msg, codebook, alt_codebook, bigrams, tree, alt_tree)
 
-        # decode and metrics except ED
-        decoded: Dict[str, str] = {}
-        for scheme, (_, sent_len, aux) in bits_map.items():
-            decoded_msg = decode_after_channel(scheme, received[scheme], aux, tree, alt_tree)
-            decoded[scheme] = decoded_msg
-            ber_results[scheme][L].append(bit_error_rate_from_ascii_strings(msg, decoded_msg))
-            perfect_results[scheme][L].append(1.0 if decoded_msg == msg else 0.0)
-            sent_bits_results[scheme][L].append(sent_len)
+            # channel per scheme
+            tasks = {s: asyncio.create_task(http_channel(bits, session_ctx, channel_url, sem))
+                     for s, (bits, _, _) in bits_map.items()}
+            received: Dict[str, str] = {scheme: await t for scheme, t in tasks.items()}
 
-        # edit distance in process pool (and normalized by original length)
-        loop = asyncio.get_running_loop()
-        ed_futs = {s: loop.run_in_executor(executor, ed, msg, decoded[s]) for s in SCHEMES}
-        for s in SCHEMES:
-            ed_val = float(await ed_futs[s])
-            ed_results[s][L].append(ed_val)
-            norm = ed_val / len(msg) if len(msg) > 0 else 0.0
-            norm_ed_results[s][L].append(norm)
+            # decode and metrics except ED
+            decoded: Dict[str, str] = {}
+            for scheme, (_, sent_len, aux) in bits_map.items():
+                decoded_msg = decode_after_channel(scheme, received[scheme], aux, tree, alt_tree)
+                decoded[scheme] = decoded_msg
+                ber_results[scheme][L].append(bit_error_rate_from_ascii_strings(msg, decoded_msg))
+                perfect_results[scheme][L].append(1.0 if decoded_msg == msg else 0.0)
+                sent_bits_results[scheme][L].append(sent_len)
 
-        # incremental plotting + CSV
-        completed_counts[L] += 1
-        if update_every > 0 and (completed_counts[L] % update_every == 0):
+            # edit distance in process pool
+            loop = asyncio.get_running_loop()
+            ed_futs = {s: loop.run_in_executor(executor, ed, msg, decoded[s]) for s in SCHEMES}
+            for s in SCHEMES:
+                ed_val = float(await ed_futs[s])
+                ed_results[s][L].append(ed_val)
+                norm = ed_val / len(msg) if len(msg) > 0 else 0.0
+                norm_ed_results[s][L].append(norm)
+
+            # incremental plotting + CSV
+            completed_counts[L] += 1
+            if update_every > 0 and (completed_counts[L] % update_every == 0):
+                await update_plots_and_csv_for_length(L)
+
+        # Per-length processing with bounded concurrency of trials
+        for L in msg_lens:
+            print(f"- Message length: {L} chars")
+            messages = []
+            if len(corpus) <= L:
+                messages = [corpus] * trials
+            else:
+                for _ in range(trials):
+                    start = rng.randrange(0, len(corpus) - L)
+                    messages.append(corpus[start:start + L])
+
+            # Batch messages to limit concurrent trials
+            for i in range(0, len(messages), msg_concurrency):
+                batch = messages[i:i + msg_concurrency]
+                await asyncio.gather(*(process_one_message(m, L) for m in batch))
+
+            # Final update for this length
             await update_plots_and_csv_for_length(L)
 
-    try:
-        if channel_url:
-            async with session_ctx:
-                for L in msg_lens:
-                    print(f"- Message length: {L} chars")
-                    messages = []
-                    if len(corpus) <= L:
-                        messages = [corpus] * trials
-                    else:
-                        for _ in range(trials):
-                            start = rng.randrange(0, len(corpus) - L)
-                            messages.append(corpus[start:start + L])
-                    await asyncio.gather(*(process_one_message(m, L) for m in messages))
-                    await update_plots_and_csv_for_length(L)
-        else:
-            for L in msg_lens:
-                print(f"- Message length: {L} chars")
-                messages = []
-                if len(corpus) <= L:
-                    messages = [corpus] * trials
-                else:
-                    for _ in range(trials):
-                        start = rng.randrange(0, len(corpus) - L)
-                        messages.append(corpus[start:start + L])
-                for m in messages:
-                    await process_one_message(m, L)
-                await update_plots_and_csv_for_length(L)
-    finally:
         if executor:
             executor.shutdown(wait=True, cancel_futures=False)
 
 # --------------- CLI ---------------
 def parse_args():
     ap = argparse.ArgumentParser(
-        description="Mass test with incremental plotting + CSV: Raw ASCII vs Huffman-only vs Hamming vs Hamming+RAID."
+        description="Mass test (HTTP only) with incremental plotting + CSV: Raw ASCII vs Huffman-only vs Hamming vs Hamming+RAID."
     )
     ap.add_argument("--trials", type=int, default=200, help="Trials per message length.")
     ap.add_argument("--msg_lens", type=str, default="50,500", help="Comma-separated message lengths (chars).")
     ap.add_argument("--seed", type=int, default=42, help="Random seed for sampling messages.")
-    ap.add_argument("--ascii_channel_arg", type=int, default=1, help="Arg to hm.noisy_channel for raw/huffman-only.")
-    ap.add_argument("--fec_channel_arg", type=int, default=0, help="Arg to hm.noisy_channel for FEC schemes.")
-    ap.add_argument("--channel_url", type=str, default="http://10.135.164.86:8080", help="HTTP channel URL (if set, use aiohttp instead of local).")
-    ap.add_argument("--http_concurrency", type=int, default=200, help="Max concurrent HTTP requests.")
+    ap.add_argument("--channel_url", type=str, default="http://10.231.129.67:8080", help="HTTP channel URL (required).")
+    ap.add_argument("--http_concurrency", type=int, default=200, help="Max concurrent HTTP requests (semaphore).")
+    ap.add_argument("--msg_concurrency", type=int, default=50, help="Max concurrent trials per message length (batch size).")
     ap.add_argument("--process_workers", type=int, default=os.cpu_count() or 2, help="Workers for edit distance.")
     ap.add_argument("--update_every", type=int, default=5, help="Update plots and CSV every N completed trials per length.")
     ap.add_argument("--outdir", type=str, default=str(THIS_FILE.parent / "comp_analysis_plots"),
@@ -487,12 +475,11 @@ if __name__ == "__main__":
             trials=args.trials,
             msg_lens=msg_lens,
             seed=args.seed,
-            ascii_channel_arg=args.ascii_channel_arg,
-            fec_channel_arg=args.fec_channel_arg,
             save_dir=out_dir,
-            channel_url=args.channel_url or None,
+            channel_url=args.channel_url,
             http_concurrency=args.http_concurrency,
             process_workers=args.process_workers,
+            msg_concurrency=args.msg_concurrency,
             update_every=args.update_every,
         )
     )

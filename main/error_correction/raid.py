@@ -79,7 +79,7 @@ def RAID_remove(data_packets, n = 16, s = 4) :
 def RAID_recover(stripe, i, n = 16, s = 4) :
     # i is multi-error packet location.
     # If i = -1 then no error
-    if i != -1 :
+    if i != -1 and i != s:
         uncorrupted = stripe[:i] + stripe[i+1:]
 
         recovered = ""
@@ -123,20 +123,18 @@ def multi_err_detect(packet, n = 16) :
             ext_par ^= 1
 
     # Check if extension parity bit doesnt match
-    if error_loc == 0 and ext_par == int(expanded[0]) :
-        # No errors, pass through
-        pass
-    elif 0 < error_loc < n and ext_par != int(expanded[0]) :
+    if ext_par != int(expanded[0]) :
         # 1 error, fix it
         expanded[error_loc] = str(int(expanded[error_loc])^1)
-        print("SINGLE-BIT ERROR")
+    elif error_loc == 0 :
+        # No errors, pass through
+        pass
     else :
         
         print("MULTI-BIT ERROR")
         print("ATTEMPTING TO RECOVER...")
         
         multi_err = True
-
     return("".join(expanded), multi_err)
 
 if __name__ == "__main__" :

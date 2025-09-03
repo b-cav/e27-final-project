@@ -10,7 +10,7 @@ from error_correction import hamming as hm
 from error_correction import raid
 
 
-def console(opt_codebook, alt_codebook, bigram_list, opt_tree, alt_tree) :
+def console(opt_codebook, bigram_list, opt_tree) :
     message = input("ENTER MESSAGE OR EXIT: ")
 
     if message == "EXIT" :
@@ -36,8 +36,7 @@ def console(opt_codebook, alt_codebook, bigram_list, opt_tree, alt_tree) :
 
     # ------------------------------------------------
     # 2) Encode message:
-    message_with_bigrams = fc.replace_bigrams(message, bigram_list)
-    compressed = fc.compress_message(message_with_bigrams, opt_codebook, alt_codebook)
+    compressed = fc.encode_message(fc.replace_bigrams(message, bigram_list), opt_codebook)
     # pass in a list of symbols to encode with bigram codebook
 
     # ------------------------------------------------
@@ -66,11 +65,11 @@ def console(opt_codebook, alt_codebook, bigram_list, opt_tree, alt_tree) :
 
     # ------------------------------------------------
     # 9) Decode:
-    decoded = fc.decompress_message(unpadded, opt_tree, alt_tree)
+    decoded = fc.decode_message(unpadded, opt_tree)
     print(f"PROTECTED MESSAGE: {decoded}")
 
 if __name__ == "__main__" :
     print("BUILDING TREE...")
-    codebook, alt_codebook, bigrams, tree, alt_tree = fc.huffman_init("./huffman/WarAndPeace.txt")
+    codebook, bigrams, tree = fc.huffman_init("./huffman/WarAndPeace.txt")
     while True :
-        console(codebook, alt_codebook, bigrams, tree, alt_tree)
+        console(codebook, bigrams, tree)

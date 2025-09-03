@@ -119,10 +119,20 @@ def set_leaf_char(root, code, sym):
         node = node.left if b == '0' else node.right
     node.char = sym
 
-# Remap the tree to minimize internal transitions
+# Remap the tree to minimize internal transitions. Don't mutate original tree.
 # Note: this does not change the shape of the tree or the code lengths, but does change which symbols are at which leaves
 # returns the root of the remapped tree
 def remap_tree(root, codebook, freqs):
+    # Clone only the shape so we can assign new leaf chars without mutating the original
+    def clone_shape(node):
+        if node is None:
+            return None
+        new = BTNode(None, node.freq)
+        new.left = clone_shape(node.left)
+        new.right = clone_shape(node.right)
+        return new
+
+    new_root = clone_shape(root)
 
     # Group symbols and codes by length
     syms_by_len = {}
@@ -137,34 +147,60 @@ def remap_tree(root, codebook, freqs):
         syms_sorted = sorted(syms_by_len[L], key=lambda s: (-freqs.get(s, 0), s))
         codes_sorted = sorted(codes_by_len[L], key=lambda c: (internal_flips(c), c.count('1'), c))
         for sym, code in zip(syms_sorted, codes_sorted):
-            set_leaf_char(root, code, sym)
-
-    return root
+            set_leaf_char(new_root, code, sym)
+    return new_root
 
 ##############################################################################
 # Encoding and decoding functions
 ##############################################################################
 
-# encodes a message given a particular codebook
+# encodes a message given a particular codebook. Also has an altcodes which is an alternative codebook. It selects which codebook
+# results in fewer internal flips and uses that one, prepending a 0 if it used the normal one and a 1 if it used the alternative one.
 # returns the encoded message as a string of bits
-def encode_message(message, codes):
+def compress_message(message, codes, alt_codes=None):
     for ch in message:
         if ch not in codes:
             print(f"Warning: No code for character '{ch}'")
-    encoded_message = "".join(codes[ch] for ch in message) # uses generator expression to create encoded message
-    return encoded_message
+    encoded_message = "".join(codes[ch] for ch in message)
+
+    if alt_codes is None:
+        return encoded_message
+
+    # If any symbol missing in alt_codes, fall back to original
+    alt_missing = any(ch not in alt_codes for ch in message)
+    if alt_missing:
+        return "0" + encoded_message
+
+    alt_encoded = "".join(alt_codes[ch] for ch in message)
+
+    # Include header bit in transition count
+    flips_orig = internal_flips("0" + encoded_message)
+    flips_alt = internal_flips("1" + alt_encoded)
+
+    if flips_alt < flips_orig:
+        return "1" + alt_encoded
+    else:
+        return "0" + encoded_message
 
 
 # decodes a message. Note, requires the huff_tree for decoding
 # returns the decoded message as a string of characters
-def decode_message(encoded_message, huff_tree):
-    result = [] # holds decoded message
-    node = huff_tree
-    for bit in encoded_message:
-        node = node.left if bit == "0" else node.right # go left if 0, go right if 1
-        if node.char is not None:  # once you get to leaf
-            result.append(node.char)  # add the correct character to the decoded message
-            node = huff_tree # start back at the top for next iteration
+def decompress_message(encoded_message, huff_tree, alt_huff_tree=None):
+    if alt_huff_tree is not None and encoded_message:
+        flag = encoded_message[0]
+        bits = encoded_message[1:]
+        tree = huff_tree if flag == "0" else alt_huff_tree
+    else:
+        bits = encoded_message
+        tree = huff_tree
+
+    result = []
+    node = tree
+    for bit in bits:
+        node = node.left if bit == "0" else node.right
+        if node.char is not None:
+            result.append(node.char)
+            node = tree
     decoded_message = "".join(result)
     return decoded_message
 
@@ -183,12 +219,12 @@ def huffman_init(training_file) :
     bigram_tree = build_huff_tree(freqs) # build the huffman tree
     bigram_codebook = build_codebook(bigram_tree) # build the codebook
 
-    # Remap the tree to minimize internal transitions
+    # Remap the tree to minimize internal transitions. This is an alternate mapping
     # Note: this does not change the shape of the tree or the code lengths
-    opt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
-    opt_codebook = build_codebook(opt_tree) # build the optimized codebook
+    alt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
+    alt_codebook = build_codebook(alt_tree) # build the optimized codebook
 
-    return(opt_codebook, bigram_list, opt_tree)
+    return(bigram_codebook, alt_codebook, bigram_list, bigram_tree, alt_tree)
 
 ##################################################################################
 # Main function for running the compression
@@ -214,9 +250,9 @@ def main():
     
     # Testing (will be replaced by command line input or file for larger texts)
     test_message = readfile('Shep_Testing/Huffman/test_message.txt')
-    encoded_test = encode_message(replace_bigrams(test_message, bigram_list), opt_codebook) #pass in a list of symbols to encode with bigram codebook
+    encoded_test = compress_message(replace_bigrams(test_message, bigram_list), opt_codebook) #pass in a list of symbols to encode with bigram codebook
     print(f"Encoded test message length (bits): {len(encoded_test)}")
-    decoded_test = decode_message(encoded_test, opt_tree)
+    decoded_test = decompress_message(encoded_test, opt_tree)
     print(f"Decoded test message matches original: {decoded_test == test_message}")
     
 if __name__ == "__main__":

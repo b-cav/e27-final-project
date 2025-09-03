@@ -40,7 +40,7 @@ def console(opt_codebook, bigram_list, opt_tree) :
                 print(f"Invalid input: {e}")
                 message = " "
     elif message.strip() == "" :
-        message == " "
+        message = "EMPTY"
     else :
         message = message.strip()
 
@@ -82,7 +82,7 @@ def console(opt_codebook, bigram_list, opt_tree) :
 
     # ------------------------------------------------
     # 6) Recover multi-bit packets, remove RAID P packets
-    raid_recovered, lost_stripes, stripe_count = raid.RAID_remove(received_packets)
+    raid_recovered, lost_stripes, damaged_stripes, stripe_count = raid.RAID_remove(received_packets)
 
     # ------------------------------------------------
     # 7) Clean Hamming parity bits
@@ -95,10 +95,20 @@ def console(opt_codebook, bigram_list, opt_tree) :
     # ------------------------------------------------
     # 9) Decode:
     decoded = fc.decode_message(unpadded, opt_tree)
-    print(f"PROTECTED MESSAGE: {decoded}")
+
+    print(f"SENT MESSAGE      : {message}")
+    print(f"HUFFMAN COMPRESSED: {compressed}")
+    print(f"HAMMING ENDCODED  : {encoded}")
+    print(f"RAID PROTECTED    : {protected}")
+    print(f"RECEIVED BITS     : {received_packets}")
+    print(f"DECODED           : {raid_recovered}")
+    print(f"PARITY REMOVED    : {cleaned}")
+    print(f"UNPADDED          : {unpadded}")
+    print(f"DECOMPRESSED      : {decoded}")
+    print(f"PROTECTED MESSAGE : {decoded}")
     print(f"---------------------------")
-    print(f"DAMAGED STRIPE COUNT: {lost_stripes}")
-    print(f"STRIPES DAMAGED: {100*(lost_stripes/stripe_count):.3f}%")
+    print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
+    print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
     print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
     print(f"---------------------------\n")
  

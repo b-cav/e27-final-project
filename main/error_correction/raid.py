@@ -36,6 +36,7 @@ def RAID_protect(data_packets, n = 16, s = 4) :
 def RAID_remove(data_packets, n = 16, s = 4) :
     out_packets = []
     stripe_count = 0
+    damaged_stripes = 0
     lost_stripes = 0
 
     i = 0
@@ -49,26 +50,28 @@ def RAID_remove(data_packets, n = 16, s = 4) :
         for j in range(len(stripe)) :
             repaired_16_bit, mult_err = multi_err_detect(stripe[j])
             if mult_err :
+                damaged_stripes += 1
                 if mult_err_loc == -1 :
                     mult_err_loc = j
                 else :
                     unrecoverable = 1
+                    lost_stripes += 1
             stripe[j] = repaired_16_bit
 
         if not unrecoverable :
             out_packets.extend(RAID_recover(stripe, mult_err_loc))
         else :
             out_packets.extend(stripe[:-1])
-            """
+            
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             print("UNRECOVERABLE MULTI-BIT ERROR")
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            """
-            lost_stripes += 1
+            
+            
 
         i += (len(stripe))
 
-    return(out_packets, lost_stripes, stripe_count)
+    return(out_packets, lost_stripes, damaged_stripes, stripe_count)
 
 # Given a stripe of s data packets and 1 parity packet
 # and corrupted packet index i recover packet at index i
@@ -120,17 +123,18 @@ def multi_err_detect(packet, n = 16) :
             ext_par ^= 1
 
     # Check if extension parity bit doesnt match
-    if ext_par != int(expanded[0]) :
-        # 1 error, fix it
-        expanded[error_loc] = str(int(expanded[error_loc])^1)
-    elif error_loc == 0 : # hence ext_par == int(expanded[0])
+    if error_loc == 0 and ext_par == int(expanded[0]) :
         # No errors, pass through
         pass
+    elif 0 < error_loc < n and ext_par != int(expanded[0]) :
+        # 1 error, fix it
+        expanded[error_loc] = str(int(expanded[error_loc])^1)
+        print("SINGLE-BIT ERROR")
     else :
-        """
+        
         print("MULTI-BIT ERROR")
         print("ATTEMPTING TO RECOVER...")
-        """
+        
         multi_err = True
 
     return("".join(expanded), multi_err)

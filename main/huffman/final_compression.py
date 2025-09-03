@@ -4,8 +4,10 @@
 
 # There are two main goals of our code:
 # 1) Implement a Huffman coding scheme that uses both single characters and bigrams as symbols. This is more effective than using single characters becuase it reduces the expected bits per unique character.
-# 2) Attempt to reduce the number of bit transitoins in the encoded message. This is done by remapping the huffman tree to assign high frequency symbols to codes with few internal transitions.
-#    This does not change the expected bits per character or the shape of the tree, but does change which symbols are at which leaves.
+# 2) Attempt to reduce the number of bit transitoins in the encoded message. This is done by making a tree that is as diverse as possible compared to the original mapping.
+# This diversity means that the tree encoding that results in fewer bit flips can be selected. The sender makes this decision and then prepends 7 0s or 7 1s to indicate
+# which tree to use. The receiver selects which tree to use based on the majority value of this header. Very low likelyhood that it will result in wrong tree being used.
+
 # Used ChatGPT to help write code
 
 import heapq 
@@ -142,9 +144,7 @@ def diverse_remap_tree(root, codebook):
         codes_by_len.setdefault(L, []).append(c)
 
     # Greedy max-distance assignment per length
-    #F or each symbol s, it chooses, from the pool of same-length codes, the one that maximizes Hamming distance to s’s baseline code. 
-    # Ties are broken to also prefer:
-    #
+    #F or each symbol s, it chooses, from the pool of same-length codes, the one that maximizes Hamming distance to s’s baseline code.
 
     for L in syms_by_len:
         syms = sorted(syms_by_len[L], key=lambda s: codebook[s])  # deterministic order for visiting codes of each length
@@ -171,12 +171,12 @@ def diverse_remap_tree(root, codebook):
 
 
 ##############################################################################
-# Encoding and decoding functions (with robust header)
+# Encoding and decoding functions
 ##############################################################################
 
 # Repeat the selector bit k times and decode by majority vote.
-# Use an odd k to avoid ties; k=5 is a good default ( )
-HEADER_REP = 5
+# Use an odd k to avoid ties; k=7 is our default
+HEADER_REP = 7
 
 def _encode_header(flag, k=HEADER_REP):
     # flag: 0 selects baseline, 1 selects alternative
@@ -251,42 +251,42 @@ def huffman_init(training_file) :
     bigram_tree = build_huff_tree(freqs) # build the huffman tree
     bigram_codebook = build_codebook(bigram_tree) # build the codebook
 
-    # Remap the tree to minimize internal transitions. This is an alternate mapping
-    # Note: this does not change the shape of the tree or the code lengths
+    # also computes diverse tree and returns that
+    # Note: this does not change the shape of the tree or the code lengths (same E[BPC])
     alt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
     alt_codebook = build_codebook(alt_tree) # build the optimized codebook
 
     return(bigram_codebook, alt_codebook, bigram_list, bigram_tree, alt_tree)
 
 ##################################################################################
-# Main function for running the compression
+# Main function for testing the compression
 ##################################################################################
 
-def main():
-    # raw training text and frequencies
-    training_text = readfile("Shep_Testing/Huffman/WarAndPeace.txt")  # or reuse 'text' if you set it earlier
+# def main():
+#     # raw training text and frequencies
+#     training_text = readfile("Shep_Testing/Huffman/WarAndPeace.txt")
 
-    # Make bigram huffman tree
-    K = 1000 # number of top bigrams to use
-    bigram_list = top_bigrams(training_text, K) # get the top K bigrams, sorted by frequency
+#     # Make bigram huffman tree
+#     K = 1000 # number of top bigrams to use
+#     bigram_list = top_bigrams(training_text, K) # get the top K bigrams, sorted by frequency
 
-    freqs = Counter(replace_bigrams(training_text, bigram_list)) # count the frequencies of the new symbols
+#     freqs = Counter(replace_bigrams(training_text, bigram_list)) # count the frequencies of the new symbols
 
-    bigram_tree = build_huff_tree(freqs) # build the huffman tree
-    bigram_codebook = build_codebook(bigram_tree) # build the codebook
+#     bigram_tree = build_huff_tree(freqs) # build the huffman tree
+#     bigram_codebook = build_codebook(bigram_tree) # build the codebook
 
-    # # Remap the tree to minimize internal transitions
-    # # Note: this does not change the shape of the tree or the code lengths
-    opt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
-    opt_codebook = build_codebook(opt_tree) # build the optimized codebook
+#     # # Remap the tree to minimize internal transitions
+#     # # Note: this does not change the shape of the tree or the code lengths
+#     opt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
+#     opt_codebook = build_codebook(opt_tree) # build the optimized codebook
     
-    # Testing (will be replaced by command line input or file for larger texts)
-    test_message = readfile('Shep_Testing/Huffman/test_message.txt')
-    encoded_test = compress_message(replace_bigrams(test_message, bigram_list), opt_codebook) #pass in a list of symbols to encode with bigram codebook
-    print(f"Encoded test message length (bits): {len(encoded_test)}")
-    decoded_test = decompress_message(encoded_test, opt_tree)
-    print(f"Decoded test message matches original: {decoded_test == test_message}")
+#     # Testing (will be replaced by command line input or file for larger texts)
+#     test_message = readfile('Shep_Testing/Huffman/test_message.txt')
+#     encoded_test = compress_message(replace_bigrams(test_message, bigram_list), opt_codebook) #pass in a list of symbols to encode with bigram codebook
+#     print(f"Encoded test message length (bits): {len(encoded_test)}")
+#     decoded_test = decompress_message(encoded_test, opt_tree)
+#     print(f"Decoded test message matches original: {decoded_test == test_message}")
     
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 

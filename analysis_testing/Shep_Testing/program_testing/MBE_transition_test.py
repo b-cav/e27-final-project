@@ -11,8 +11,8 @@ My results:
 With reduction mean mbe: 6.71
 Without reduction mean mbe: 6.91
 """
-from huffman import transition_test_fc as fc
-from error_correction import hamming as hm
+import transition_test_fc as fc
+import hamming_test as hm
 
    
 multibit_count = 0

@@ -10,17 +10,15 @@ from error_correction import hamming as hm
 from error_correction import raid
 import os
 
-def console(opt_codebook, bigram_list, opt_tree, info_mode) :
-    message = input("ENTER <MESSAGE> OR CHOOSE FILE, INFO, EXIT: ")
-    message = message.strip()
+def console(opt_codebook, bigram_list, opt_tree) :
+    message = input("ENTER MESSAGE OR FILE OR EXIT: ")
 
     # ***********************************************
     # Handle special inputs
     # ***********************************************
-    if message.upper() == "EXIT" :
+    if message.strip() == "EXIT" :
         exit()
-    
-    elif message.upper() == "FILE":
+    elif message.strip() == "FILE":
         dir = "./test_files"
         files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
         if not files:
@@ -41,21 +39,11 @@ def console(opt_codebook, bigram_list, opt_tree, info_mode) :
             except Exception as e:
                 print(f"Invalid input: {e}")
                 message = " "
-    elif message == "" :
-        message = "EMPTY"
-
-    if message.upper() == "INFO" :
-        if info_mode == 0 :
-            print(f"INFO MODE ACTIVATED")
-        else :
-            print(f"INFO MODE DEACTIVATED")
-        info_mode ^= 1
+    elif message.strip() == "" :
+        message == " "
     else :
-        send_message(message, codebook, bigrams, tree, info_mode)
+        message = message.strip()
 
-    return(info_mode)
-
-def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
     # ************************************************
     # For comparison: unprotected, basic ASCII routine
     # ************************************************
@@ -91,10 +79,10 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
     # 5) Transmit packets:
     received_packets = hm.noisy_channel(protected, 0)
 
+
     # ------------------------------------------------
     # 6) Recover multi-bit packets, remove RAID P packets
-    raid_recovered, lost_stripes, damaged_stripes, stripe_count = raid.RAID_remove(received_packets, info_flag)
-
+    raid_recovered, lost_stripes, stripe_count = raid.RAID_remove(received_packets)
 
     # ------------------------------------------------
     # 7) Clean Hamming parity bits
@@ -107,30 +95,15 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
     # ------------------------------------------------
     # 9) Decode:
     decoded = fc.decode_message(unpadded, opt_tree)
-    print(f"PROTECTED MESSAGE : {decoded}")
-
-    if info_flag :
-        print(f"---------------------------")
-        print(f"SENT MESSAGE      : {message}")
-        print(f"HUFFMAN COMPRESSED: {compressed}")
-        print(f"HAMMING ENDCODED  : {encoded}")
-        print(f"RAID PROTECTED    : {protected}")
-        print(f"RECEIVED BITS     : {received_packets}")
-        print(f"DECODED           : {raid_recovered}")
-        print(f"PARITY REMOVED    : {cleaned}")
-        print(f"UNPADDED          : {unpadded}")
-        print(f"DECOMPRESSED      : {decoded}")
-
+    print(f"PROTECTED MESSAGE: {decoded}")
     print(f"---------------------------")
-    print(f"STRIPES DAMAGED: {damaged_stripes}/{stripe_count} = {100*(damaged_stripes/stripe_count):.3f}%")
-    print(f"STRIPES LOST: {lost_stripes}/{stripe_count} = {100*(lost_stripes/stripe_count):.3f}%")
+    print(f"DAMAGED STRIPE COUNT: {lost_stripes}")
+    print(f"STRIPES DAMAGED: {100*(lost_stripes/stripe_count):.3f}%")
     print("Damaged stripe means multiple multi-bit errors in a stripe of 4 data packets, 1 parity packet")
     print(f"---------------------------\n")
-
-
+ 
 if __name__ == "__main__" :
     print("BUILDING TREE...")
     codebook, bigrams, tree = fc.huffman_init("./huffman/WarAndPeace.txt")
-    info_mode = 0
     while True :
-        info_mode = console(codebook, bigrams, tree, info_mode)
+        console(codebook, bigrams, tree)

@@ -209,7 +209,7 @@ def main():
 
     # # Remap the tree to minimize internal transitions
     # # Note: this does not change the shape of the tree or the code lengths
-    opt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
+    opt_tree = remap_tree(bigram_tree, bigram_codebook)
     opt_codebook = build_codebook(opt_tree) # build the optimized codebook
     
     # Testing (will be replaced by command line input or file for larger texts)

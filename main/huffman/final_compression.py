@@ -4,8 +4,10 @@
 
 # There are two main goals of our code:
 # 1) Implement a Huffman coding scheme that uses both single characters and bigrams as symbols. This is more effective than using single characters becuase it reduces the expected bits per unique character.
-# 2) Attempt to reduce the number of bit transitoins in the encoded message. This is done by remapping the huffman tree to assign high frequency symbols to codes with few internal transitions.
-#    This does not change the expected bits per character or the shape of the tree, but does change which symbols are at which leaves.
+# 2) Attempt to reduce the number of bit transitoins in the encoded message. This is done by making a tree that is as diverse as possible compared to the original mapping.
+# This diversity means that the tree encoding that results in fewer bit flips can be selected. The sender makes this decision and then prepends 7 0s or 7 1s to indicate
+# which tree to use. The receiver selects which tree to use based on the majority value of this header. Very low likelyhood that it will result in wrong tree being used.
+
 # Used ChatGPT to help write code
 
 import heapq 
@@ -132,39 +134,96 @@ def remap_tree(root, codebook, freqs):
         syms_by_len.setdefault(L, []).append(sym)
         codes_by_len.setdefault(L, []).append(code)
 
-    # Remap per length
-    for L in syms_by_len.keys():
-        syms_sorted = sorted(syms_by_len[L], key=lambda s: (-freqs.get(s, 0), s))
-        codes_sorted = sorted(codes_by_len[L], key=lambda c: (internal_flips(c), c.count('1'), c))
-        for sym, code in zip(syms_sorted, codes_sorted):
-            set_leaf_char(root, code, sym)
+    # Greedy max-distance assignment per length
+    #F or each symbol s, it chooses, from the pool of same-length codes, the one that maximizes Hamming distance to s’s baseline code.
 
-    return root
+    for L in syms_by_len:
+        syms = sorted(syms_by_len[L], key=lambda s: codebook[s])  # deterministic order for visiting codes of each length
+        pool = set(codes_by_len[L]) # set of codes to look at
+        for s in syms:
+            c0 = codebook[s]
+            # pick the one from the pool with the highest hamming distance
+            best = max(
+                pool,
+                # 4 choices here: 
+                # 1.  pick one with farthest hamming distance. 
+                # 2. pick one whose first bit differs from baseline's first bit)
+                # 3. prefer codes whose last bit differs from the baseline’s last bit. This helps change boundary behavior at the end of the codeword.
+                # 4. prefer codes with more internal transitions. This increases pattern diversity when previous criteria tie.
+                # 5. pick deterministically by the lexicographically largest code string among exact ties, ensuring repeatable results.
+
+                key=lambda c: (hamming(c, c0), c[0] != c0[0], c[-1] != c0[-1], internal_flips(c), c)
+            )
+            set_leaf_char(new_root, best, s)
+            pool.remove(best) # remove code from pool, ensuring one-to-one assignment of new tree
+
+    return new_root # returns the most diverse tree
+
+
 
 ##############################################################################
 # Encoding and decoding functions
 ##############################################################################
 
-# encodes a message given a particular codebook
+# Repeat the selector bit k times and decode by majority vote.
+# Use an odd k to avoid ties; k=7 is our default
+HEADER_REP = 7
+
+def _encode_header(flag, k=HEADER_REP):
+    # flag: 0 selects baseline, 1 selects alternative
+    return ("1" if flag else "0") * k
+
+def _decode_header(bits, k=HEADER_REP):
+    # majority vote over the k header bits
+    ones = bits.count("1")
+    return 1 if ones > k // 2 else 0
+
+# encodes a message given a particular codebook. Also has an altcodes which is an alternative codebook. It selects which codebook
+# results in fewer internal flips and uses that one, prepending a repeated header (0^k for baseline, 1^k for alternative).
 # returns the encoded message as a string of bits
 def encode_message(message, codes):
     for ch in message:
         if ch not in codes:
             print(f"Warning: No code for character '{ch}'")
-    encoded_message = "".join(codes[ch] for ch in message) # uses generator expression to create encoded message
-    return encoded_message
+    encoded_message = "".join(codes[ch] for ch in message)
+    if alt_codes is None:
+        return encoded_message
 
+    # If any symbol missing in alt_codes, fall back to original (with baseline header)
+    if any(ch not in alt_codes for ch in message):
+        return _encode_header(0) + encoded_message
 
-# decodes a message. Note, requires the huff_tree for decoding
+    alt_encoded = "".join(alt_codes[ch] for ch in message)
+
+    # Include header in the transition count so selection accounts for the header/payload boundary
+    h0 = _encode_header(0)
+    h1 = _encode_header(1)
+    flips_orig = internal_flips(h0 + encoded_message)
+    flips_alt = internal_flips(h1 + alt_encoded)
+
+    if flips_alt < flips_orig:
+        return h1 + alt_encoded
+    else:
+        return h0 + encoded_message
+
+# decodes a message. If alt_huff_tree is provided, expects a k-bit repeated header to select which tree to use
 # returns the decoded message as a string of characters
-def decode_message(encoded_message, huff_tree):
-    result = [] # holds decoded message
-    node = huff_tree
-    for bit in encoded_message:
-        node = node.left if bit == "0" else node.right # go left if 0, go right if 1
-        if node.char is not None:  # once you get to leaf
-            result.append(node.char)  # add the correct character to the decoded message
-            node = huff_tree # start back at the top for next iteration
+def decompress_message(encoded_message, huff_tree, alt_huff_tree=None):
+    if alt_huff_tree is not None and len(encoded_message) >= HEADER_REP:
+        flag = _decode_header(encoded_message[:HEADER_REP])
+        bits = encoded_message[HEADER_REP:]
+        tree = huff_tree if flag == 0 else alt_huff_tree
+    else:
+        bits = encoded_message
+        tree = huff_tree
+
+    result = []
+    node = tree
+    for bit in bits:
+        node = node.left if bit == "0" else node.right
+        if node.char is not None:
+            result.append(node.char)
+            node = tree
     decoded_message = "".join(result)
     return decoded_message
 
@@ -183,42 +242,42 @@ def huffman_init(training_file) :
     bigram_tree = build_huff_tree(freqs) # build the huffman tree
     bigram_codebook = build_codebook(bigram_tree) # build the codebook
 
-    # Remap the tree to minimize internal transitions
-    # Note: this does not change the shape of the tree or the code lengths
-    opt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
-    opt_codebook = build_codebook(opt_tree) # build the optimized codebook
+    # also computes diverse tree and returns that
+    # Note: this does not change the shape of the tree or the code lengths (same E[BPC])
+    alt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
+    alt_codebook = build_codebook(alt_tree) # build the optimized codebook
 
     return(opt_codebook, bigram_list, opt_tree)
 
 ##################################################################################
-# Main function for running the compression
+# Main function for testing the compression
 ##################################################################################
 
-def main():
-    # raw training text and frequencies
-    training_text = readfile("Shep_Testing/Huffman/WarAndPeace.txt")  # or reuse 'text' if you set it earlier
+# def main():
+#     # raw training text and frequencies
+#     training_text = readfile("Shep_Testing/Huffman/WarAndPeace.txt")
 
-    # Make bigram huffman tree
-    K = 1000 # number of top bigrams to use
-    bigram_list = top_bigrams(training_text, K) # get the top K bigrams, sorted by frequency
+#     # Make bigram huffman tree
+#     K = 1000 # number of top bigrams to use
+#     bigram_list = top_bigrams(training_text, K) # get the top K bigrams, sorted by frequency
 
-    freqs = Counter(replace_bigrams(training_text, bigram_list)) # count the frequencies of the new symbols
+#     freqs = Counter(replace_bigrams(training_text, bigram_list)) # count the frequencies of the new symbols
 
-    bigram_tree = build_huff_tree(freqs) # build the huffman tree
-    bigram_codebook = build_codebook(bigram_tree) # build the codebook
+#     bigram_tree = build_huff_tree(freqs) # build the huffman tree
+#     bigram_codebook = build_codebook(bigram_tree) # build the codebook
 
-    # # Remap the tree to minimize internal transitions
-    # # Note: this does not change the shape of the tree or the code lengths
-    opt_tree = remap_tree(bigram_tree, bigram_codebook)
-    opt_codebook = build_codebook(opt_tree) # build the optimized codebook
+#     # # Remap the tree to minimize internal transitions
+#     # # Note: this does not change the shape of the tree or the code lengths
+#     opt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
+#     opt_codebook = build_codebook(opt_tree) # build the optimized codebook
     
-    # Testing (will be replaced by command line input or file for larger texts)
-    test_message = readfile('Shep_Testing/Huffman/test_message.txt')
-    encoded_test = encode_message(replace_bigrams(test_message, bigram_list), opt_codebook) #pass in a list of symbols to encode with bigram codebook
-    print(f"Encoded test message length (bits): {len(encoded_test)}")
-    decoded_test = decode_message(encoded_test, opt_tree)
-    print(f"Decoded test message matches original: {decoded_test == test_message}")
+#     # Testing (will be replaced by command line input or file for larger texts)
+#     test_message = readfile('Shep_Testing/Huffman/test_message.txt')
+#     encoded_test = compress_message(replace_bigrams(test_message, bigram_list), opt_codebook) #pass in a list of symbols to encode with bigram codebook
+#     print(f"Encoded test message length (bits): {len(encoded_test)}")
+#     decoded_test = decompress_message(encoded_test, opt_tree)
+#     print(f"Decoded test message matches original: {decoded_test == test_message}")
     
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 

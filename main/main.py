@@ -10,7 +10,7 @@ from error_correction import hamming as hm
 from error_correction import raid
 import os
 
-def console(opt_codebook, bigram_list, opt_tree, info_mode) :
+def console(codebook, alt_codebook, bigram_list, tree, alt_tree, info_mode) :
     message = input("ENTER <MESSAGE> OR CHOOSE FILE, INFO, EXIT: ")
     message = message.strip()
 
@@ -51,11 +51,11 @@ def console(opt_codebook, bigram_list, opt_tree, info_mode) :
             print(f"INFO MODE DEACTIVATED")
         info_mode ^= 1
     else :
-        send_message(message, codebook, bigrams, tree, info_mode)
+        send_message(message, codebook, alt_codebook, bigrams, tree, alt_tree, info_mode)
 
     return(info_mode)
 
-def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
+def send_message(message, opt_codebook, alt_codebook, bigram_list, opt_tree, alt_tree, info_flag) :
     # ************************************************
     # For comparison: unprotected, basic ASCII routine
     # ************************************************
@@ -75,9 +75,11 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
     # ************************************************
 
     # ------------------------------------------------
-    # 2) Encode message:
-    compressed = fc.encode_message(fc.replace_bigrams(message, bigram_list), opt_codebook)
+# 2) Encode message:
+    message_with_bigrams = fc.replace_bigrams(message, bigram_list)
+    compressed = fc.compress_message(message_with_bigrams, opt_codebook, alt_codebook)
     # pass in a list of symbols to encode with bigram codebook
+
 
     # ------------------------------------------------
     # 3) Packetize, add parity bits:
@@ -106,7 +108,7 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
 
     # ------------------------------------------------
     # 9) Decode:
-    decoded = fc.decode_message(unpadded, opt_tree)
+    decoded = fc.decompress_message(unpadded, opt_tree, alt_tree)
     print(f"PROTECTED MESSAGE : {decoded}")
 
     if info_flag :
@@ -130,7 +132,7 @@ def send_message(message, opt_codebook, bigram_list, opt_tree, info_flag) :
 
 if __name__ == "__main__" :
     print("BUILDING TREE...")
-    codebook, bigrams, tree = fc.huffman_init("./huffman/WarAndPeace.txt")
+    codebook, alt_codebook, bigrams, tree, alt_tree = fc.huffman_init("./huffman/WarAndPeace.txt")
     info_mode = 0
     while True :
-        info_mode = console(codebook, bigrams, tree, info_mode)
+        info_mode = console(codebook, alt_codebook, bigrams, tree, alt_tree, info_mode)

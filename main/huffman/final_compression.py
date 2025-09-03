@@ -119,36 +119,55 @@ def set_leaf_char(root, code, sym):
         node = node.left if b == '0' else node.right
     node.char = sym
 
-# Remap the tree to minimize internal transitions. Don't mutate original tree.
-# Note: this does not change the shape of the tree or the code lengths, but does change which symbols are at which leaves
-# returns the root of the remapped tree
-def remap_tree(root, codebook, freqs):
-    # Clone only the shape so we can assign new leaf chars without mutating the original
+# Build an alternative tree whose leaf assignment is as different as possible from the baseline
+def diverse_remap_tree(root, codebook):
     def clone_shape(node):
         if node is None:
             return None
-        new = BTNode(None, node.freq)
-        new.left = clone_shape(node.left)
-        new.right = clone_shape(node.right)
-        return new
+        n = BTNode(None, node.freq)
+        n.left = clone_shape(node.left)
+        n.right = clone_shape(node.right)
+        return n
 
-    new_root = clone_shape(root)
+    def hamming(a, b):
+        return sum(x != y for x, y in zip(a, b))
 
-    # Group symbols and codes by length
-    syms_by_len = {}
-    codes_by_len = {}
-    for sym, code in codebook.items():
-        L = len(code)
-        syms_by_len.setdefault(L, []).append(sym)
-        codes_by_len.setdefault(L, []).append(code)
+    new_root = clone_shape(root) # clone so that original tree is unchagned
 
-    # Remap per length
-    for L in syms_by_len.keys():
-        syms_sorted = sorted(syms_by_len[L], key=lambda s: (-freqs.get(s, 0), s))
-        codes_sorted = sorted(codes_by_len[L], key=lambda c: (internal_flips(c), c.count('1'), c))
-        for sym, code in zip(syms_sorted, codes_sorted):
-            set_leaf_char(new_root, code, sym)
-    return new_root
+    # Group by code length to enforce that each symbol retains its code length (Only swapping withing same depth )
+    syms_by_len, codes_by_len = {}, {}
+    for s, c in codebook.items():
+        L = len(c)
+        syms_by_len.setdefault(L, []).append(s)
+        codes_by_len.setdefault(L, []).append(c)
+
+    # Greedy max-distance assignment per length
+    #F or each symbol s, it chooses, from the pool of same-length codes, the one that maximizes Hamming distance to s’s baseline code. 
+    # Ties are broken to also prefer:
+    #
+
+    for L in syms_by_len:
+        syms = sorted(syms_by_len[L], key=lambda s: codebook[s])  # deterministic order for visiting codes of each length
+        pool = set(codes_by_len[L]) # set of codes to look at
+        for s in syms:
+            c0 = codebook[s]
+            # pick the one from the pool with the highest hamming distance
+            best = max(
+                pool,
+                # 4 choices here: 
+                # 1.  pick one with farthest hamming distance. 
+                # 2. pick one whose first bit differs from baseline's first bit)
+                # 3. prefer codes whose last bit differs from the baseline’s last bit. This helps change boundary behavior at the end of the codeword.
+                # 4. prefer codes with more internal transitions. This increases pattern diversity when previous criteria tie.
+                # 5. pick deterministically by the lexicographically largest code string among exact ties, ensuring repeatable results.
+
+                key=lambda c: (hamming(c, c0), c[0] != c0[0], c[-1] != c0[-1], internal_flips(c), c)
+            )
+            set_leaf_char(new_root, best, s)
+            pool.remove(best) # remove code from pool, ensuring one-to-one assignment of new tree
+
+    return new_root # returns the most diverse tree
+
 
 ##############################################################################
 # Encoding and decoding functions
@@ -221,7 +240,7 @@ def huffman_init(training_file) :
 
     # Remap the tree to minimize internal transitions. This is an alternate mapping
     # Note: this does not change the shape of the tree or the code lengths
-    alt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
+    alt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
     alt_codebook = build_codebook(alt_tree) # build the optimized codebook
 
     return(bigram_codebook, alt_codebook, bigram_list, bigram_tree, alt_tree)
@@ -245,7 +264,7 @@ def main():
 
     # # Remap the tree to minimize internal transitions
     # # Note: this does not change the shape of the tree or the code lengths
-    opt_tree = remap_tree(bigram_tree, bigram_codebook, freqs)
+    opt_tree = diverse_remap_tree(bigram_tree, bigram_codebook)
     opt_codebook = build_codebook(opt_tree) # build the optimized codebook
     
     # Testing (will be replaced by command line input or file for larger texts)
